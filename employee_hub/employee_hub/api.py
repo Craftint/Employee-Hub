@@ -28,6 +28,9 @@ def resolve_period(period=None, from_date=None, to_date=None):
     if period == "range" and from_date and to_date:
         return getdate(from_date), getdate(to_date)
 
+    if not period or period == "today":
+        return today, today
+
     days_map = {
         "week": 7,
         "month": 30,
@@ -35,7 +38,7 @@ def resolve_period(period=None, from_date=None, to_date=None):
         "half_year": 182,
         "year": 365,
     }
-    days = days_map.get(period, 30)  # default: last 30 days ("Last Month")
+    days = days_map.get(period, 0)
     start = add_days(today, -days)
     return start, today
 
@@ -183,12 +186,23 @@ def get_dashboard_data():
     if not employee:
         frappe.throw(_("No Employee record is linked to your user account."))
 
-    start, end = resolve_period()  # default: last 30 days
+    # The 5 number cards (Attendance/Leaves/Tasks/Timesheets/Salary) keep their
+    # original "Last 30 Days" window regardless of the chart/list-card filter
+    # default below — they aren't individually filterable, so they shouldn't
+    # shrink to a single day just because the filterable cards now default
+    # to "Today".
+    stats_start, stats_end = resolve_period("month")
+
+    # The Attendance Overview chart *is* individually filterable (has its own
+    # mini filter dropdown), and that dropdown's default is "Today" — so its
+    # initial data must match that default.
+    chart_start, chart_end = resolve_period()
+
     leave_data = get_leave_summary(employee)
 
     return {
-        "stats": get_stats(employee, user, leave_data, start, end),
-        "attendance_chart": get_attendance_chart(start, end),
+        "stats": get_stats(employee, user, leave_data, stats_start, stats_end),
+        "attendance_chart": get_attendance_chart(chart_start, chart_end),
         "leave_pie": get_leave_pie(leave_data),
         "birthdays": get_upcoming_birthdays(employee),
     }
@@ -402,7 +416,7 @@ def get_tab_data(tab):
     if not employee:
         frappe.throw(_("No Employee record linked."))
 
-    start, end = resolve_period()  # default: last 30 days
+    start, end = resolve_period()  # default: today (each list card's own mini filter starts on "Today")
 
     if tab == "attendance":
         attendance, attendance_total = list_in_range(

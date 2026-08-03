@@ -32,18 +32,21 @@ const LIST_ROUTE_MAP = {
     'hr-request': 'HR Request',
     communication: 'Communication',
     'event-list': 'Event',
+    'todo-list': 'ToDo',
 };
 
 // Preset options in the mini filter dropdown. "Select Date Range" is
 // handled separately (opens a frappe.ui.Dialog) so its label can reflect
 // the currently-applied custom range.
 const PRESET_PERIOD_OPTIONS = [
+    { value: 'today', label: 'Today' },
     { value: 'year', label: 'Last Year' },
     { value: 'quarter', label: 'Last Quarter' },
     { value: 'month', label: 'Last Month' },
     { value: 'week', label: 'Last Week' },
 ];
 const PERIOD_LABELS = {
+    today: 'Today',
     year: 'Last Year',
     quarter: 'Last Quarter',
     month: 'Last Month',
@@ -62,7 +65,7 @@ class EmployeeHub {
         this.page = page;
         this.activeTab = 'dashboard';
         this.tabCache = {};
-        this.cardPeriods = {}; // cardKey -> {type, from, to}, defaults to 'month' (last 30 days)
+        this.cardPeriods = {}; // cardKey -> {type, from, to}, defaults to 'today'
         this.$container = $('<div class="employee-hub">').appendTo(page.body);
         this.init();
     }
@@ -182,21 +185,29 @@ class EmployeeHub {
                     ).join('')}
                 </div>
                 <div class="hub-comm-icon" title="Open communications">
-                    💬
+                    ${this.comm_icon_svg()}
                     ${this.commCount > 0 ? `<span class="hub-comm-badge">${this.commCount}</span>` : ''}
                 </div>
             </div>
             <div class="hub-mobile-overlay"></div>`;
     }
 
+    // Instagram-DM-style outline icon instead of a mail emoji.
+    comm_icon_svg() {
+        return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22 3L2 10.5L10.5 13.5L13.5 22L22 3Z" stroke="currentColor" stroke-width="1.8"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>`;
+    }
+
     render_mini_filter(cardKey) {
-        const period = this.cardPeriods[cardKey] || { type: 'month' };
+        const period = this.cardPeriods[cardKey] || { type: 'today' };
         const isRange = period.type === 'range' && period.from && period.to;
         const rangeText = isRange
             ? `${frappe.datetime.str_to_user(period.from)} - ${frappe.datetime.str_to_user(period.to)}`
             : null;
 
-        const pillLabel = isRange ? rangeText : PERIOD_LABELS[period.type] || 'Last Month';
+        const pillLabel = isRange ? rangeText : PERIOD_LABELS[period.type] || 'Today';
 
         const presetOptions = PRESET_PERIOD_OPTIONS.map(
             (o) => `<div class="hub-mini-filter-option ${o.value === period.type ? 'active' : ''}" data-value="${o.value}">${o.label}</div>`
@@ -294,7 +305,7 @@ class EmployeeHub {
         const $body = $card.find('.hub-card-body');
         $body.html('<p class="text-muted hub-empty">Loading...</p>');
 
-        const period = this.cardPeriods[cardKey] || { type: 'month' };
+        const period = this.cardPeriods[cardKey] || { type: 'today' };
         const params =
             period.type === 'range' ? { period: 'range', from_date: period.from, to_date: period.to } : { period: period.type };
 
@@ -559,10 +570,19 @@ class EmployeeHub {
         return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
     }
 
-    truncate_words(text, maxWords) {
+    truncate_words(text, maxWords, maxChars) {
+        maxChars = maxChars || 70;
+        let result = text;
         const words = text.split(' ').filter(Boolean);
-        if (words.length <= maxWords) return text;
-        return words.slice(0, maxWords).join(' ') + '…';
+        if (words.length > maxWords) {
+            result = words.slice(0, maxWords).join(' ') + '…';
+        }
+        // Guards against a single very long "word" with no spaces (e.g. typed
+        // without spacing) which would otherwise overflow the row untouched.
+        if (result.length > maxChars) {
+            result = result.slice(0, maxChars) + '…';
+        }
+        return result;
     }
 
     // -----------------------------------------------------------------
@@ -575,7 +595,7 @@ class EmployeeHub {
                       const doctype = t.reference_type || 'ToDo';
                       const name = t.reference_name || t.name;
                       const plainText = this.strip_html(t.description) || t.name;
-                      const preview = this.truncate_words(plainText, 10);
+                      const preview = this.truncate_words(plainText, 10, 70);
                       return this.row(
                           doctype,
                           name,
@@ -591,6 +611,8 @@ class EmployeeHub {
                   .join('')
             : '<p class="text-muted hub-empty">No open to-dos.</p>';
 
+        const seeMore = `<a class="hub-view-all" data-route-doctype="todo-list">See more${todosTotal ? ` (${todosTotal})` : ''}</a>`;
+
         return `
             <div class="hub-card">
                 <div class="hub-card-header">
@@ -601,13 +623,13 @@ class EmployeeHub {
                     </div>
                 </div>
                 <div class="hub-scroll-list hub-scroll-4">${rows}</div>
+                <div style="text-align:center;margin-top:8px;">${seeMore}</div>
             </div>`;
     }
 
     render_events_card(events, eventsTotal) {
-        const visible = events.slice(0, 3);
-        const rows = visible.length
-            ? visible
+        const rows = events.length
+            ? events
                   .map((e) =>
                       this.row(
                           'Event',
@@ -621,10 +643,7 @@ class EmployeeHub {
                   .join('')
             : '<p class="text-muted hub-empty">No upcoming events.</p>';
 
-        const seeMore =
-            eventsTotal > visible.length
-                ? `<a class="hub-view-all" data-route-doctype="event-list">See more (${eventsTotal})</a>`
-                : '';
+        const seeMore = `<a class="hub-view-all" data-route-doctype="event-list">See more${eventsTotal ? ` (${eventsTotal})` : ''}</a>`;
 
         return `
             <div class="hub-card">
@@ -632,10 +651,10 @@ class EmployeeHub {
                     <h4>Upcoming Events</h4>
                     <div class="hub-card-header-right">
                         ${eventsTotal ? `<span class="hub-tag hub-count-badge">${eventsTotal}</span>` : ''}
-                        ${seeMore}
                     </div>
                 </div>
-                ${rows}
+                <div class="hub-scroll-list hub-scroll-3">${rows}</div>
+                <div style="text-align:center;margin-top:8px;">${seeMore}</div>
             </div>`;
     }
 
@@ -945,6 +964,10 @@ class EmployeeHub {
         }
         if (key === 'event-list') {
             frappe.set_route('List', 'Event');
+            return;
+        }
+        if (key === 'todo-list') {
+            frappe.set_route('List', 'ToDo', { allocated_to: frappe.session.user, status: 'Open' });
             return;
         }
         const doctype = LIST_ROUTE_MAP[key];
