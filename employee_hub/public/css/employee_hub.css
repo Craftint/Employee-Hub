@@ -1,0 +1,611 @@
+:root {
+    --hub-purple: #6C5CE7;
+    --hub-purple-dark: #5b4bd6;
+    --hub-bg: #F7F7FC;
+    --hub-border: #EAEAF3;
+    --hub-text-muted: #8A8A9E;
+    --hub-green: #2ecc71;
+    --hub-red: #e74c3c;
+    --hub-orange: #f39c12;
+    --hub-yellow: #f1c40f;
+    --hub-blue: #3498db;
+    --hub-pink: #e84393;
+    --hub-gray: #6b6b80;
+}
+
+* { box-sizing: border-box; }
+
+.employee-hub {
+    background: var(--hub-bg);
+    padding: 4px 4px 24px;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.hub-loading {
+    padding: 40px;
+    text-align: center;
+    color: var(--hub-text-muted);
+}
+
+/* Top bar: tabs + message icon --------------------------------------- */
+.hub-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.hub-tabbar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+.hub-tab {
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--hub-text-muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.hub-tab.active {
+    background: var(--hub-purple);
+    color: #fff;
+    border-color: var(--hub-purple);
+}
+.hub-tab:not(.active):hover {
+    background: var(--hub-border);
+}
+.hub-comm-icon {
+    position: relative;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 8px;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.hub-comm-icon:hover { background: var(--hub-border); }
+.hub-comm-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--hub-red);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 17px;
+    height: 17px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+
+/* Body layout: main content (left) + persistent side column (right) ----- */
+.hub-body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 16px;
+    align-items: start;
+}
+.hub-side {
+    position: sticky;
+    top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+.hub-main { min-width: 0; }
+
+/* Card grids — column count is driven purely by CSS (data-cols + media
+   queries), never by JS after the fact. This is what keeps charts from
+   ever measuring the wrong container width. */
+.hub-grid {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 16px;
+    min-width: 0;
+}
+.hub-grid[data-cols="1"] { grid-template-columns: 1fr; }
+.hub-grid[data-cols="2"] { grid-template-columns: repeat(2, 1fr); }
+.hub-grid[data-cols="5"] { grid-template-columns: repeat(5, 1fr); }
+
+@media (max-width: 1300px) {
+    .hub-grid[data-cols="5"] { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+    .hub-body { grid-template-columns: 1fr; }
+    .hub-side { position: static; }
+    .hub-grid[data-cols="5"] { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+    .hub-grid { grid-template-columns: 1fr !important; }
+}
+
+/* Responsive Frappe page title — scoped via .hub-page-title, added by JS
+   only to this page's own title element, so no other Desk page is affected. */
+.hub-page-title {
+    font-size: clamp(14px, 4.5vw, 20px) !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    max-width: 100% !important;
+}
+
+/* Mobile hamburger + off-canvas nav drawer -------------------------------- */
+.hub-hamburger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 8px;
+    font-size: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.hub-mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 998;
+}
+.hub-mobile-overlay.open { display: block; }
+
+@media (max-width: 768px) {
+    .hub-hamburger { display: flex; }
+    .hub-tabbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: 260px;
+        max-width: 80vw;
+        background: #fff;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 64px 16px 16px;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        z-index: 999;
+        overflow-y: auto;
+        box-shadow: 2px 0 20px rgba(0, 0, 0, 0.18);
+    }
+    .hub-tabbar.mobile-open { transform: translateX(0); }
+    .hub-tab { width: 100%; text-align: left; }
+    html[data-theme="dark"] .hub-tabbar { background: #2a2a2d; }
+}
+
+/* Cards ------------------------------------------------------------------ */
+.hub-card {
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 12px;
+    padding: 18px;
+    min-width: 0;
+}
+.hub-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.hub-card-header h4 { margin: 0; font-size: 14px; }
+.hub-card-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.hub-card-body { min-width: 0; }
+.hub-view-all, .hub-card-link {
+    font-size: 12px;
+    color: var(--hub-purple);
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.hub-card-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-weight: 500;
+}
+.hub-tag {
+    font-size: 11px;
+    color: var(--hub-text-muted);
+    background: var(--hub-bg);
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+.hub-only-yours {
+    color: var(--hub-purple);
+    background: #EFECFD;
+    font-weight: 600;
+}
+.hub-count-badge {
+    background: var(--hub-purple);
+    color: #fff;
+    font-weight: 700;
+}
+.hub-empty { font-size: 12px; }
+
+/* Scrollable list — used by "My To-Dos" to cap the initial view at ~4 rows
+   without hiding the rest; the rest scroll into view instead of paginating. */
+.hub-scroll-list.hub-scroll-4 {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+/* Per-card mini filter (pill + dropdown) ----------------------------------- */
+.hub-mini-filter {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #F0F0F5;
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #5a5a6e;
+    cursor: pointer;
+    user-select: none;
+}
+.hub-mini-filter:hover { background: #E4E4EE; }
+.hub-mini-filter-icon { font-size: 8px; }
+.hub-mini-filter-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(20, 20, 40, 0.14);
+    min-width: 180px;
+    padding: 6px;
+    z-index: 100;
+    cursor: default;
+}
+.hub-mini-filter.open .hub-mini-filter-menu { display: block; }
+.hub-mini-filter-option {
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 400;
+    color: #2d2d3a;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.hub-mini-filter-option:hover { background: var(--hub-bg); }
+.hub-mini-filter-option.active { color: var(--hub-purple); font-weight: 600; }
+
+.hub-count-note {
+    font-size: 11px;
+    color: var(--hub-text-muted);
+    text-align: center;
+    margin: 10px 0 0;
+    padding-top: 8px;
+    border-top: 1px dashed var(--hub-border);
+}
+
+/* Profile card (persistent, right column) ---------------------------------- */
+.hub-profile-card {
+    text-align: center;
+    padding: 20px 18px;
+}
+.hub-profile-photo {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--hub-bg);
+    display: block;
+}
+.hub-profile-photo-placeholder {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--hub-purple), #a29bfe);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    font-weight: 700;
+}
+.hub-photo-note {
+    font-size: 11px;
+    color: var(--hub-orange);
+    background: #FEF3E2;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 0 0 10px;
+}
+.hub-profile-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.hub-profile-name { margin: 0; font-size: 16px; font-weight: 700; color: #2d2d3a; }
+.hub-profile-info { text-align: left; }
+.hub-profile-info-row {
+    display: grid;
+    grid-template-columns: 20px auto 1fr;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid var(--hub-border);
+    font-size: 12px;
+}
+.hub-profile-info-icon { font-size: 13px; text-align: center; }
+.hub-profile-info-label { color: var(--hub-text-muted); white-space: nowrap; }
+.hub-profile-info-value {
+    font-weight: 500;
+    text-align: right;
+    color: #2d2d3a;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+.hub-not-updated {
+    font-style: italic;
+    font-weight: 400;
+    color: #bcbccb;
+}
+.hub-profile-view-link {
+    display: block;
+    text-align: center;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--hub-border);
+    font-weight: 600;
+}
+
+/* Stat cards -------------------------------------------------------------- */
+.hub-stat-card { padding: 16px; }
+.hub-stat-label { font-size: 12px; color: var(--hub-text-muted); margin-bottom: 6px; }
+.hub-stat-value { font-size: 24px; font-weight: 700; color: #2d2d3a; word-break: break-word; }
+.hub-stat-sub { font-size: 11px; color: var(--hub-text-muted); margin-bottom: 8px; }
+
+/* Progress bars ------------------------------------------------------------ */
+.hub-progress {
+    height: 6px;
+    background: var(--hub-border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 6px 0;
+}
+.hub-progress-bar {
+    height: 100%;
+    background: var(--hub-green);
+    border-radius: 4px;
+}
+.hub-leave-row { margin-bottom: 12px; }
+.hub-leave-top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: #2d2d3a;
+    gap: 8px;
+}
+
+/* List rows ------------------------------------------------------------------ */
+.hub-list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--hub-border);
+    gap: 10px;
+}
+.hub-list-row:last-child { border-bottom: none; }
+.hub-clickable { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
+.hub-clickable:hover { background: var(--hub-bg); padding-left: 6px; padding-right: 6px; margin: 0 -6px; }
+.hub-list-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #2d2d3a;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.hub-list-sub { font-size: 11px; color: var(--hub-text-muted); }
+.hub-avatar-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+/* Badges ------------------------------------------------------------------ */
+.hub-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.hub-badge-high { background: #FDECEC; color: var(--hub-red); }
+.hub-badge-medium { background: #FEF3E2; color: var(--hub-orange); }
+.hub-badge-low { background: #EAF2FB; color: var(--hub-blue); }
+.hub-badge-urgent { background: #FDECEC; color: var(--hub-red); }
+
+/* Status badges — every status gets a light, presentable color */
+.hub-status-open { background: #EAF2FB; color: var(--hub-blue); }
+.hub-status-submitted { background: #EAF2FB; color: var(--hub-blue); }
+.hub-status-present { background: #E7F9EF; color: var(--hub-green); }
+.hub-status-absent { background: #FDECEC; color: var(--hub-red); }
+.hub-status-half-day { background: #FEF3E2; color: var(--hub-orange); }
+.hub-status-in-progress { background: #FEF3E2; color: var(--hub-orange); }
+.hub-status-working { background: #FEF3E2; color: var(--hub-orange); }
+.hub-status-pending { background: #FEF3E2; color: var(--hub-orange); }
+.hub-status-pending-review { background: #FEF3E2; color: var(--hub-orange); }
+.hub-status-overdue { background: #FDECEC; color: var(--hub-red); }
+.hub-status-approved { background: #E7F9EF; color: var(--hub-green); }
+.hub-status-paid { background: #E7F9EF; color: var(--hub-green); }
+.hub-status-completed { background: #E7F9EF; color: var(--hub-green); }
+.hub-status-active { background: #E7F9EF; color: var(--hub-green); }
+.hub-status-unpaid { background: #FEF3E2; color: var(--hub-orange); }
+.hub-status-rejected { background: #FDECEC; color: var(--hub-red); }
+.hub-status-cancelled { background: #F0F0F5; color: var(--hub-gray); }
+.hub-status-closed { background: #F0F0F5; color: var(--hub-gray); }
+.hub-status-draft { background: #F0F0F5; color: var(--hub-gray); }
+.hub-status-inactive { background: #F0F0F5; color: var(--hub-gray); }
+.hub-status-expired { background: #FDECEC; color: var(--hub-red); }
+.hub-status-replied { background: #E7F9EF; color: var(--hub-green); }
+
+/* Chart -------------------------------------------------------------------- */
+.hub-chart { width: 100%; overflow: hidden; }
+.hub-chart svg { max-width: 100%; }
+.hub-legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--hub-text-muted);
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+.hub-legend span {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.hub-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+/* Quick actions -------------------------------------------------------------- */
+.hub-quick-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.hub-qa-btn {
+    border: none;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.hub-qa-blue { background: #EAF2FB; color: var(--hub-blue); }
+.hub-qa-cyan { background: #E6FAF9; color: #17a2b8; }
+.hub-qa-orange { background: #FEF3E2; color: var(--hub-orange); }
+.hub-qa-pink { background: #FDEAF3; color: var(--hub-pink); }
+.hub-qa-btn:hover { filter: brightness(0.96); }
+
+/* ===========================================================================
+   Dark theme support — Frappe Desk sets data-theme="dark" on <html> when the
+   user's theme is Dark (or Automatic resolves to dark). Everything above is
+   light-theme-only hardcoded colors, so it's explicitly overridden here.
+   =========================================================================== */
+html[data-theme="dark"] .employee-hub {
+    background: #1c1c1e;
+}
+html[data-theme="dark"] .hub-card,
+html[data-theme="dark"] .hub-tab,
+html[data-theme="dark"] .hub-comm-icon,
+html[data-theme="dark"] .hub-hamburger,
+html[data-theme="dark"] .hub-mini-filter-menu {
+    background: #2a2a2d;
+    border-color: #3d3d40;
+}
+html[data-theme="dark"] .hub-tab {
+    color: #b0b0b3;
+}
+html[data-theme="dark"] .hub-tab.active {
+    background: var(--hub-purple);
+    color: #fff;
+    border-color: var(--hub-purple);
+}
+html[data-theme="dark"] .hub-tab:not(.active):hover {
+    background: #3d3d40;
+}
+html[data-theme="dark"] .hub-mini-filter {
+    background: #3d3d40;
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-mini-filter:hover {
+    background: #47474a;
+}
+html[data-theme="dark"] .hub-mini-filter-option:hover {
+    background: #3d3d40;
+}
+html[data-theme="dark"] .hub-stat-value,
+html[data-theme="dark"] .hub-list-title,
+html[data-theme="dark"] .hub-profile-name,
+html[data-theme="dark"] .hub-profile-info-value,
+html[data-theme="dark"] .hub-card-header h4,
+html[data-theme="dark"] .hub-leave-top {
+    color: #f0f0f2;
+}
+html[data-theme="dark"] .hub-stat-label,
+html[data-theme="dark"] .hub-stat-sub,
+html[data-theme="dark"] .hub-list-sub,
+html[data-theme="dark"] .hub-profile-info-label,
+html[data-theme="dark"] .hub-empty,
+html[data-theme="dark"] .hub-count-note,
+html[data-theme="dark"] .hub-legend {
+    color: #9a9a9d;
+}
+html[data-theme="dark"] .hub-list-row,
+html[data-theme="dark"] .hub-profile-info-row,
+html[data-theme="dark"] .hub-count-note {
+    border-color: #3d3d40;
+}
+html[data-theme="dark"] .hub-progress,
+html[data-theme="dark"] .hub-tag {
+    background: #3d3d40;
+}
+html[data-theme="dark"] .hub-tag {
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-photo-note {
+    background: #3a2f1a;
+    color: #f0c674;
+}
+html[data-theme="dark"] .hub-not-updated {
+    color: #6e6e71;
+}
+html[data-theme="dark"] .hub-clickable:hover {
+    background: #333336;
+}
+/* Every status/priority badge keeps its colored text but gets a translucent
+   dark chip instead of its light pastel background (which clashes on dark). */
+html[data-theme="dark"] .hub-badge {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
