@@ -484,21 +484,40 @@
 .hub-status-closed { background: #F0F0F5; color: var(--hub-gray); }
 .hub-status-draft { background: #F0F0F5; color: var(--hub-gray); }
 .hub-status-inactive { background: #F0F0F5; color: var(--hub-gray); }
+.hub-status-template { background: #F0F0F5; color: var(--hub-gray); }
 .hub-status-expired { background: #FDECEC; color: var(--hub-red); }
 .hub-status-replied { background: #E7F9EF; color: var(--hub-green); }
 
 /* Chart -------------------------------------------------------------------- */
-.hub-chart { width: 100%; overflow: hidden; }
+.hub-chart {
+    width: 100%;
+    overflow-x: hidden;
+    overflow-y: visible;
+}
 .hub-chart svg { max-width: 100%; }
-/* Always stacked vertically — previous attempts at responsive horizontal
-   wrapping (flex-wrap, then a 1000px breakpoint) still clipped "Half Day"
-   at some viewport widths. A fixed vertical stack trades a slightly taller
-   legend for a layout that is width-independent and can never clip again. */
+/* The hover tooltip is now redundant since values show permanently above
+   each bar/point (valuesOverPoints:1 in JS) — hiding it outright instead of
+   continuing to fight its position/clipping, which never fully resolved
+   across several attempts. frappe-charts' tooltip element uses this class. */
+.hub-chart .graph-svg-tip {
+    display: none !important;
+}
+/* frappe-charts' own auto-legend (rendered as a sibling .chart-legend block
+   under the SVG) wasn't actually suppressed by the hideLegend:1 config flag
+   in this version — hiding it directly via CSS instead, since that isn't
+   version-dependent. Our own custom legend below is the only one shown. */
+.hub-chart .chart-legend {
+    display: none !important;
+}
+/* CSS Grid instead of flexbox for our own legend — flex-wrap kept clipping
+   "Half Day" at certain widths even with white-space:nowrap set; grid's
+   auto-fit sizes each column to its content (max-content) and reliably
+   moves overflowing items to a new row instead of clipping them. */
 .hub-legend {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, max-content));
+    justify-content: center;
+    gap: 8px 18px;
     font-size: 12px;
     color: var(--hub-text-muted);
     margin-top: 6px;
@@ -626,6 +645,12 @@ html[data-theme="dark"] .hub-clickable:hover {
    dark chip instead of its light pastel background (which clashes on dark). */
 html[data-theme="dark"] .hub-badge {
     background: rgba(255, 255, 255, 0.08) !important;
+}
+/* frappe-charts renders all its SVG text (axis labels, and the permanent
+   value-over-point numbers) with a dark fill color meant for a light
+   background — invisible against a dark card. Force it light in dark mode. */
+html[data-theme="dark"] .hub-chart svg text {
+    fill: #e5e5e8 !important;
 }
 html[data-theme="dark"] .hub-qa-blue,
 html[data-theme="dark"] .hub-qa-cyan,

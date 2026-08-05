@@ -1,17 +1,19 @@
 // ---------------------------------------------------------------------------
-// NOTE: The "redirect to Employee Hub after login" behavior is handled
-// entirely server-side by hooks.py's `role_home_page = {"Employee": "employee-hub"}`.
-// That is Frappe's native mechanism and only ever applies when the user is
-// being routed to their home page (e.g. right after login), so it never
-// interferes with reloading whatever page you're already on.
-//
-// An earlier version of this file *also* had a client-side fallback here
-// that force-redirected to Employee Hub whenever frappe.get_route() looked
-// empty. That client-side check ran too early in the page lifecycle on a
-// plain reload (before Frappe's router had finished parsing the URL hash),
-// so it misfired on ordinary reloads of *any* page, not just at login. It
-// has been removed — role_home_page alone is sufficient and correct.
+// One-shot redirect to Employee Hub immediately after login. Server-side,
+// on_login (boot.py) sets a short-lived cache flag scoped to this exact
+// session; boot_session (also boot.py) picks it up on this very page load
+// and deletes it immediately, so frappe.boot.employee_hub_redirect_once can
+// only ever be true on the single load right after a fresh login — never on
+// a later reload. (A prior version relied solely on Frappe's own
+// role_home_page/home_page mechanism, which worked for the first login on a
+// browser but not reliably afterward — apparently the client-side router
+// can override it in some cases, which is outside anything a hook controls.)
 // ---------------------------------------------------------------------------
+frappe.after_ajax(() => {
+    if (frappe.boot && frappe.boot.employee_hub_redirect_once) {
+        frappe.set_route('employee-hub');
+    }
+});
 
 // ---------------------------------------------------------------------------
 // Pinned "Employee Hub" sidebar link, shown above the Workspaces tree on

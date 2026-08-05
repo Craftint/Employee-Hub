@@ -40,19 +40,41 @@ const LIST_ROUTE_MAP = {
 // the currently-applied custom range.
 const PRESET_PERIOD_OPTIONS = [
     { value: 'today', label: 'Today' },
-    { value: 'year', label: 'Last Year' },
-    { value: 'quarter', label: 'Last Quarter' },
-    { value: 'month', label: 'Last Month' },
-    { value: 'week', label: 'Last Week' },
+    { value: 'week', label: 'This Week' },
+    { value: 'month', label: 'This Month' },
+    { value: 'quarter', label: 'This Quarter' },
+    { value: 'half_year', label: 'Half Yearly' },
+    { value: 'year', label: 'This Year' },
 ];
 const PERIOD_LABELS = {
     today: 'Today',
-    year: 'Last Year',
-    quarter: 'Last Quarter',
-    month: 'Last Month',
-    week: 'Last Week',
+    week: 'This Week',
+    month: 'This Month',
+    quarter: 'This Quarter',
+    half_year: 'Half Yearly',
+    year: 'This Year',
 };
 
+// Each card's own default period — must match CARD_DEFAULT_PERIOD in
+// api.py, so the mini filter pill shown always matches the data actually
+// loaded for that card on first render.
+const CARD_DEFAULT_PERIOD = {
+    'attendance-chart': 'week',
+    attendance: 'week',
+    'employee-checkin': 'week',
+    'leave-application': 'week',
+    'attendance-request': 'week',
+    task: 'week',
+    timesheet: 'week',
+    'task-donut': 'week',
+    'salary-slip': 'month',
+    'expense-claim': 'month',
+    'salary-trend': 'quarter',
+    appraisal: 'year',
+};
+function default_period_for(cardKey) {
+    return CARD_DEFAULT_PERIOD[cardKey] || 'today';
+}
 // NOTE ON LAYOUT: column widths are driven entirely by CSS ([data-cols]
 // attribute selectors + media queries), not JS. This is deliberate — a
 // previous version set grid-template-columns via JS *after* the charts
@@ -65,7 +87,7 @@ class EmployeeHub {
         this.page = page;
         this.activeTab = 'dashboard';
         this.tabCache = {};
-        this.cardPeriods = {}; // cardKey -> {type, from, to}, defaults to 'today'
+        this.cardPeriods = {}; // cardKey -> {type, from, to}, defaults to 'month' (last 30 days)
         this.$container = $('<div class="employee-hub">').appendTo(page.body);
         this.init();
     }
@@ -201,13 +223,13 @@ class EmployeeHub {
     }
 
     render_mini_filter(cardKey) {
-        const period = this.cardPeriods[cardKey] || { type: 'today' };
+        const period = this.cardPeriods[cardKey] || { type: default_period_for(cardKey) };
         const isRange = period.type === 'range' && period.from && period.to;
         const rangeText = isRange
             ? `${frappe.datetime.str_to_user(period.from)} - ${frappe.datetime.str_to_user(period.to)}`
             : null;
 
-        const pillLabel = isRange ? rangeText : PERIOD_LABELS[period.type] || 'Today';
+        const pillLabel = isRange ? rangeText : PERIOD_LABELS[period.type] || PERIOD_LABELS[default_period_for(cardKey)] || 'Today';
 
         const presetOptions = PRESET_PERIOD_OPTIONS.map(
             (o) => `<div class="hub-mini-filter-option ${o.value === period.type ? 'active' : ''}" data-value="${o.value}">${o.label}</div>`
@@ -305,7 +327,7 @@ class EmployeeHub {
         const $body = $card.find('.hub-card-body');
         $body.html('<p class="text-muted hub-empty">Loading...</p>');
 
-        const period = this.cardPeriods[cardKey] || { type: 'today' };
+        const period = this.cardPeriods[cardKey] || { type: default_period_for(cardKey) };
         const params =
             period.type === 'range' ? { period: 'range', from_date: period.from, to_date: period.to } : { period: period.type };
 
@@ -313,6 +335,20 @@ class EmployeeHub {
             const r = await frappe.call('employee_hub.employee_hub.api.get_attendance_chart', params);
             $body.html(this.attendance_chart_body_html(r.message));
             this.init_attendance_chart($card);
+            return;
+        }
+
+        if (cardKey === 'salary-trend') {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_salary_trend_chart', params);
+            $body.html(this.salary_trend_body_html(r.message));
+            this.init_salary_trend_chart($card);
+            return;
+        }
+
+        if (cardKey === 'task-donut') {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_task_status_chart', params);
+            $body.html(this.task_donut_body_html(r.message));
+            this.init_task_donut_chart($card);
             return;
         }
 
@@ -418,7 +454,8 @@ class EmployeeHub {
                             <div class="hub-list-title">${frappe.utils.escape_html(t.subject)}</div>
                             <div class="hub-list-sub">Due ${t.exp_end_date ? frappe.datetime.str_to_user(t.exp_end_date) : 'N/A'}</div>
                          </div>
-                         <span class="hub-badge hub-badge-${(t.priority || 'low').toLowerCase()}">${t.priority || 'Low'}</span>`
+                         <span class="hub-badge hub-badge-${(t.priority || 'low').toLowerCase()}">${t.priority || 'Low'}</span>
+                         <span class="hub-badge hub-status-${(t.status || '').toLowerCase().replace(/ /g, '-')}">${t.status}</span>`
                     ),
             },
             timesheet: {
@@ -658,6 +695,92 @@ class EmployeeHub {
             </div>`;
     }
 
+    // Shared between Dashboard and the Salary & Expenses tab, so both show
+    // the exact same card/chart instead of duplicated markup.
+    render_salary_trend_section(salaryTrend) {
+        return `
+            <div class="hub-card" data-card-key="salary-trend">
+                <div class="hub-card-header">
+                    <h4>Net Pay Trend</h4>
+                    <div class="hub-card-header-right">${this.render_mini_filter('salary-trend')}</div>
+                </div>
+                <div class="hub-card-body">${this.salary_trend_body_html(salaryTrend)}</div>
+            </div>`;
+    }
+
+    salary_trend_body_html(salaryTrend) {
+        if (salaryTrend && salaryTrend.labels.length) {
+            return `<div class="hub-chart" id="hub-salary-trend"
+                         data-labels='${JSON.stringify(salaryTrend.labels)}'
+                         data-values='${JSON.stringify(salaryTrend.values)}'></div>`;
+        }
+        return '<p class="text-muted hub-empty">No Salary Slips in this period — try a wider filter (e.g. Last Year).</p>';
+    }
+
+    init_salary_trend_chart($scope) {
+        $scope = $scope || this.$main;
+        const $line = $scope.find('#hub-salary-trend');
+        if (!$line.length) return;
+        new frappe.Chart($line[0], {
+            data: {
+                labels: JSON.parse($line.attr('data-labels')),
+                datasets: [{ name: 'Net Pay', chartType: 'line', values: JSON.parse($line.attr('data-values')) }],
+            },
+            type: 'line',
+            height: 200,
+            colors: ['#6C5CE7'],
+            lineOptions: { regionFill: 1 },
+            hideLegend: 1,
+            valuesOverPoints: 1,
+        });
+        this.hide_zero_value_labels($line[0]);
+    }
+
+    // Shared between Dashboard and the Tasks & Timesheets tab.
+    render_task_donut_section(breakdown) {
+        return `
+            <div class="hub-card" data-card-key="task-donut">
+                <div class="hub-card-header">
+                    <h4>Task Status Breakdown</h4>
+                    <div class="hub-card-header-right">${this.render_mini_filter('task-donut')}</div>
+                </div>
+                <div class="hub-card-body">${this.task_donut_body_html(breakdown)}</div>
+            </div>`;
+    }
+
+    task_donut_body_html(breakdown) {
+        if (breakdown && breakdown.labels.length) {
+            return `<div class="hub-chart" id="hub-task-donut"
+                         data-labels='${JSON.stringify(breakdown.labels)}'
+                         data-values='${JSON.stringify(breakdown.values)}'></div>
+                    ${this.render_swatch_legend(breakdown.labels, [
+                        '#6C5CE7',
+                        '#00b894',
+                        '#fdcb6e',
+                        '#e17055',
+                        '#0984e3',
+                        '#e84393',
+                    ])}`;
+        }
+        return '<p class="text-muted hub-empty">No tasks in this period — try a wider filter (e.g. Last Year).</p>';
+    }
+
+    init_task_donut_chart($scope) {
+        $scope = $scope || this.$main;
+        const $donut = $scope.find('#hub-task-donut');
+        if (!$donut.length) return;
+        new frappe.Chart($donut[0], {
+            data: {
+                labels: JSON.parse($donut.attr('data-labels')),
+                datasets: [{ values: JSON.parse($donut.attr('data-values')) }],
+            },
+            type: 'donut',
+            height: 200,
+            colors: ['#6C5CE7', '#00b894', '#fdcb6e', '#e17055', '#0984e3', '#e84393'],
+            hideLegend: 1,
+        });
+    }
+
     // -----------------------------------------------------------------
     // Dashboard tab
     // -----------------------------------------------------------------
@@ -683,7 +806,15 @@ class EmployeeHub {
                     d.leave_pie
                         ? `<div class="hub-chart" id="hub-leave-pie" data-labels='${JSON.stringify(
                               d.leave_pie.labels
-                          )}' data-values='${JSON.stringify(d.leave_pie.values)}'></div>`
+                          )}' data-values='${JSON.stringify(d.leave_pie.values)}'></div>` +
+                          this.render_swatch_legend(d.leave_pie.labels, [
+                              '#6C5CE7',
+                              '#00b894',
+                              '#fdcb6e',
+                              '#e17055',
+                              '#0984e3',
+                              '#e84393',
+                          ])
                         : '<p class="text-muted hub-empty">No leave allocations found.</p>'
                 }
                 </div>
@@ -725,8 +856,14 @@ class EmployeeHub {
                 </div>
             </div>`);
 
+        const $row3 = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
+        $row3.append(this.render_salary_trend_section(d.salary_trend));
+        $row3.append(this.render_task_donut_section(d.task_status_breakdown));
+
         this.init_attendance_chart($attCard);
         this.init_pie_chart();
+        this.init_salary_trend_chart();
+        this.init_task_donut_chart();
     }
 
     attendance_chart_body_html(chart) {
@@ -740,6 +877,20 @@ class EmployeeHub {
                     <span><i class="hub-dot" style="background:#e74c3c"></i>Absent</span>
                     <span><i class="hub-dot" style="background:#f1c40f"></i>Half Day</span>
                 </div>`;
+    }
+
+    // Reusable colored-swatch legend for pie/donut charts, matching the
+    // attendance bar chart's custom legend style — used instead of each
+    // chart's own auto-legend (which is hidden via hideLegend:1) to avoid
+    // the duplicate-legend/clipping issue that caused.
+    render_swatch_legend(labels, colors) {
+        if (!labels || !labels.length) return '';
+        return `<div class="hub-legend">${labels
+            .map(
+                (l, i) =>
+                    `<span><i class="hub-dot" style="background:${colors[i % colors.length]}"></i>${frappe.utils.escape_html(l)}</span>`
+            )
+            .join('')}</div>`;
     }
 
     init_attendance_chart($card) {
@@ -758,7 +909,32 @@ class EmployeeHub {
             height: 220,
             colors: ['#2ecc71', '#e74c3c', '#f1c40f'],
             axisOptions: { xIsSeries: true },
+            hideLegend: 1,
+            // The hover tooltip kept getting clipped no matter which CSS fix
+            // was tried (card overflow, chart overflow, viewport edge — it's
+            // an absolutely-positioned element from the charting library
+            // itself, outside our layout's control). Showing the values
+            // permanently above each bar sidesteps the problem entirely —
+            // no hover interaction needed, nothing to clip.
+            valuesOverPoints: 1,
         });
+        this.hide_zero_value_labels($el[0]);
+    }
+
+    // frappe-charts' valuesOverPoints has no built-in "skip zero" option, so
+    // this hides them after the fact. Axis tick labels are deliberately left
+    // alone (their "0" baseline label should stay visible) by skipping any
+    // <text> that sits inside a D3-style ".axis" group; anything else with
+    // exactly "0" as its content is one of our permanent value labels.
+    hide_zero_value_labels(container) {
+        setTimeout(() => {
+            container.querySelectorAll('svg text').forEach((el) => {
+                const isAxisLabel = el.closest('.x.axis, .y.axis, .axis');
+                if (!isAxisLabel && el.textContent.trim() === '0') {
+                    el.style.display = 'none';
+                }
+            });
+        }, 50);
     }
 
     init_pie_chart() {
@@ -772,6 +948,7 @@ class EmployeeHub {
             type: 'pie',
             height: 220,
             colors: ['#6C5CE7', '#00b894', '#fdcb6e', '#e17055', '#0984e3', '#e84393'],
+            hideLegend: 1,
         });
     }
 
@@ -780,7 +957,7 @@ class EmployeeHub {
             {
                 label: 'Attendance',
                 value: `${stats.attendance.present}/${stats.attendance.total_days}`,
-                sub: 'Days Present (Last 30 Days)',
+                sub: 'Days Present (This Month)',
                 link: 'attendance',
                 extra: `<div class="hub-progress"><div class="hub-progress-bar" style="width:${Math.min(
                     100,
@@ -789,7 +966,7 @@ class EmployeeHub {
             },
             { label: 'Leaves', value: stats.leaves.available, sub: 'Available Days Left', link: 'leave-application' },
             { label: 'Tasks', value: stats.tasks.pending, sub: 'Pending Tasks', link: 'task' },
-            { label: 'Timesheets', value: stats.timesheets.hours, sub: 'Hours (Last 30 Days)', link: 'timesheet' },
+            { label: 'Timesheets', value: stats.timesheets.hours, sub: 'Hours (This Month)', link: 'timesheet' },
             { label: 'Salary', value: stats.salary.month, sub: stats.salary.status, link: 'salary-slip' },
         ];
         const html = cards
@@ -864,29 +1041,9 @@ class EmployeeHub {
         $row.append(this.list_card('Salary Slips', 'salary-slip', 'salary-slip', d.salary_slips, true, d.counts['salary-slip']));
         $row.append(this.list_card('Expense Claims', 'expense-claim', 'expense-claim', d.expense_claims, true, d.counts['expense-claim']));
 
-        if (d.salary_trend && d.salary_trend.labels.length) {
-            const $row2 = $('<div class="hub-grid" data-cols="1"></div>').appendTo(this.$main);
-            $row2.append(`
-                <div class="hub-card">
-                    <div class="hub-card-header"><h4>Net Pay Trend (last 6 slips)</h4></div>
-                    <div class="hub-card-body">
-                        <div class="hub-chart" id="hub-salary-trend"
-                             data-labels='${JSON.stringify(d.salary_trend.labels)}'
-                             data-values='${JSON.stringify(d.salary_trend.values)}'></div>
-                    </div>
-                </div>`);
-            const $line = this.$main.find('#hub-salary-trend');
-            new frappe.Chart($line[0], {
-                data: {
-                    labels: JSON.parse($line.attr('data-labels')),
-                    datasets: [{ name: 'Net Pay', chartType: 'line', values: JSON.parse($line.attr('data-values')) }],
-                },
-                type: 'line',
-                height: 200,
-                colors: ['#6C5CE7'],
-                lineOptions: { regionFill: 1 },
-            });
-        }
+        const $row2 = $('<div class="hub-grid" data-cols="1"></div>').appendTo(this.$main);
+        $row2.append(this.render_salary_trend_section(d.salary_trend));
+        this.init_salary_trend_chart();
     }
 
     // -----------------------------------------------------------------
@@ -898,28 +1055,9 @@ class EmployeeHub {
         $row.append(this.list_card('My Tasks', 'task', 'task', d.tasks, true, d.counts['task']));
         $row.append(this.list_card('Timesheets', 'timesheet', 'timesheet', d.timesheets, true, d.counts['timesheet']));
 
-        if (d.task_status_breakdown && d.task_status_breakdown.labels.length) {
-            const $row2 = $('<div class="hub-grid" data-cols="1"></div>').appendTo(this.$main);
-            $row2.append(`
-                <div class="hub-card">
-                    <div class="hub-card-header"><h4>Task Status Breakdown (all-time)</h4></div>
-                    <div class="hub-card-body">
-                        <div class="hub-chart" id="hub-task-donut"
-                             data-labels='${JSON.stringify(d.task_status_breakdown.labels)}'
-                             data-values='${JSON.stringify(d.task_status_breakdown.values)}'></div>
-                    </div>
-                </div>`);
-            const $donut = this.$main.find('#hub-task-donut');
-            new frappe.Chart($donut[0], {
-                data: {
-                    labels: JSON.parse($donut.attr('data-labels')),
-                    datasets: [{ values: JSON.parse($donut.attr('data-values')) }],
-                },
-                type: 'donut',
-                height: 200,
-                colors: ['#6C5CE7', '#00b894', '#fdcb6e', '#e17055', '#0984e3', '#e84393'],
-            });
-        }
+        const $row2 = $('<div class="hub-grid" data-cols="1"></div>').appendTo(this.$main);
+        $row2.append(this.render_task_donut_section(d.task_status_breakdown));
+        this.init_task_donut_chart();
     }
 
     // -----------------------------------------------------------------

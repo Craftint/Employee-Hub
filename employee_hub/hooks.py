@@ -12,12 +12,15 @@ app_include_css = "/assets/employee_hub/css/employee_hub.css"
 # Redirect employees straight to Employee Hub after login -------------------
 # Requires the built-in "Employee" role (auto-assigned by ERPNext when a
 # User is linked to an Employee record).
-role_home_page = {
-    "Employee": "employee-hub"
-}
 
-# Safety net: also stamp boot info so client-side JS can redirect any user
-# that has an Employee record even if the "Employee" role isn't set.
+# role_home_page = {
+#     "Employee": "employee-hub"
+# }
+
+on_login = "employee_hub.employee_hub.boot.on_login"
+
+# Safety net: also stamp boot info in case some other part of the UI wants
+# to know whether the current user has a linked Employee record.
 boot_session = "employee_hub.employee_hub.boot.boot_session"
 
 # Doc events ------------------------------------------------------------------
