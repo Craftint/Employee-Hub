@@ -677,7 +677,7 @@ LIST_CARD_CONFIG = {
 
 
 @frappe.whitelist()
-def get_card_list(card_key, period=None, from_date=None, to_date=None):
+def get_card_list(card_key, period=None, from_date=None, to_date=None, status_field=None, status_value=None):
     cfg = LIST_CARD_CONFIG.get(card_key)
     if not cfg:
         frappe.throw(_("Unknown card: {0}").format(card_key))
@@ -694,5 +694,49 @@ def get_card_list(card_key, period=None, from_date=None, to_date=None):
 
     filters.update(cfg.get("base_filters", {}))
 
+    # Only trust status_field if it's a real field on this doctype — never
+    # let the client dictate an arbitrary filter field.
+    if status_field and status_value:
+        meta = frappe.get_meta(cfg["doctype"])
+        if meta.get_field(status_field):
+            filters[status_field] = status_value
+
     records, total = list_in_range(cfg["doctype"], filters, cfg["date_field"], cfg["fields"], start, end)
     return {"records": records, "total": total}
+
+
+@frappe.whitelist()
+def get_card_status_options(card_key):
+    """Powers the funnel/status-filter icon on each card. If the doctype has
+    an active Workflow, its states become the filter options (filtering on
+    the workflow's own state field). Otherwise, falls back to the doctype's
+    standard "status" Select field, if it has one. Returns an empty options
+    list (hiding the icon client-side) if neither exists."""
+    cfg = LIST_CARD_CONFIG.get(card_key)
+    if not cfg:
+        frappe.throw(_("Unknown card: {0}").format(card_key))
+
+    doctype = cfg["doctype"]
+
+    workflow = frappe.db.get_value(
+        "Workflow", {"document_type": doctype, "is_active": 1}, ["name", "workflow_state_field"], as_dict=True
+    )
+    if workflow:
+        states = frappe.get_all(
+            "Workflow Document State",
+            filters={"parent": workflow.name},
+            fields=["state"],
+            order_by="idx",
+        )
+        return {
+            "field": workflow.workflow_state_field or "workflow_state",
+            "options": [s.state for s in states],
+        }
+
+    meta = frappe.get_meta(doctype)
+    status_field = meta.get_field("status")
+    if status_field and status_field.fieldtype == "Select" and status_field.options:
+        options = [o.strip() for o in status_field.options.split("\n") if o.strip()]
+        return {"field": "status", "options": options}
+
+    return {"field": None, "options": []}

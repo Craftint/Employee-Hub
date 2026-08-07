@@ -87,7 +87,9 @@ class EmployeeHub {
         this.page = page;
         this.activeTab = 'dashboard';
         this.tabCache = {};
-        this.cardPeriods = {}; // cardKey -> {type, from, to}, defaults to 'month' (last 30 days)
+        this.cardPeriods = {}; // cardKey -> {type, from, to}
+        this.cardStatusFilters = {}; // cardKey -> selected status/workflow-state string
+        this.statusOptionsCache = {}; // cardKey -> {field, options} from get_card_status_options
         this.$container = $('<div class="employee-hub">').appendTo(page.body);
         this.init();
     }
@@ -189,9 +191,42 @@ class EmployeeHub {
             this.refresh_card(cardKey);
         });
 
-        $(document)
-            .off('click.employeeHubFilters')
-            .on('click.employeeHubFilters', () => this.$container.find('.hub-mini-filter').removeClass('open'));
+        // ---- Per-card status/workflow filter (funnel icon) ----
+        this.$container.on('click', '.hub-status-filter-icon', async (e) => {
+            e.stopPropagation();
+            const $filter = $(e.currentTarget).closest('.hub-status-filter');
+            const cardKey = $filter.attr('data-card-key');
+            const wasOpen = $filter.hasClass('open');
+            $('.hub-status-filter').removeClass('open');
+            $('.hub-mini-filter').removeClass('open');
+            if (wasOpen) return;
+            $filter.addClass('open');
+            await this.ensure_status_options(cardKey);
+        });
+
+        this.$container.on('click', '.hub-status-filter-menu', (e) => e.stopPropagation());
+
+        this.$container.on('click', '.hub-status-filter-option', (e) => {
+            e.stopPropagation();
+            const $option = $(e.currentTarget);
+            const $filter = $option.closest('.hub-status-filter');
+            const cardKey = $filter.attr('data-card-key');
+            const value = $option.attr('data-value');
+
+            if (value) {
+                this.cardStatusFilters[cardKey] = value;
+            } else {
+                delete this.cardStatusFilters[cardKey];
+            }
+            $filter.removeClass('open');
+            this.refresh_status_filter_icon(cardKey);
+            this.refresh_card(cardKey);
+        });
+
+        $(document).off('click.employeeHubFilters').on('click.employeeHubFilters', () => {
+            this.$container.find('.hub-mini-filter').removeClass('open');
+            this.$container.find('.hub-status-filter').removeClass('open');
+        });
     }
 
     render_topbar() {
@@ -253,6 +288,64 @@ class EmployeeHub {
     refresh_mini_filter(cardKey) {
         const $old = this.$container.find(`.hub-mini-filter[data-card-key="${cardKey}"]`);
         if ($old.length) $old.replaceWith(this.render_mini_filter(cardKey));
+    }
+
+    filter_icon_svg() {
+        return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z" fill="currentColor"/>
+        </svg>`;
+    }
+
+    // Funnel icon + dropdown for filtering a card by its status (or, if the
+    // doctype has an active Workflow, by the workflow's own state field).
+    // Options are fetched lazily on first click (see ensure_status_options)
+    // rather than bundled into every initial page load.
+    render_status_filter(cardKey) {
+        const selected = this.cardStatusFilters[cardKey];
+        return `
+            <div class="hub-status-filter" data-card-key="${cardKey}">
+                <span class="hub-status-filter-icon" title="Filter by status">${this.filter_icon_svg()}</span>
+                ${selected ? `<span class="hub-status-filter-badge">${frappe.utils.escape_html(selected)}</span>` : ''}
+                <div class="hub-status-filter-menu">
+                    <div class="hub-status-filter-loading">Loading...</div>
+                </div>
+            </div>`;
+    }
+
+    refresh_status_filter_icon(cardKey) {
+        const $old = this.$container.find(`.hub-status-filter[data-card-key="${cardKey}"]`);
+        if ($old.length) $old.replaceWith(this.render_status_filter(cardKey));
+    }
+
+    async ensure_status_options(cardKey) {
+        if (!this.statusOptionsCache[cardKey]) {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_card_status_options', { card_key: cardKey });
+            this.statusOptionsCache[cardKey] = r.message || { field: null, options: [] };
+        }
+        this.render_status_menu(cardKey);
+    }
+
+    render_status_menu(cardKey) {
+        const $filter = this.$container.find(`.hub-status-filter[data-card-key="${cardKey}"]`);
+        const $menu = $filter.find('.hub-status-filter-menu');
+        const data = this.statusOptionsCache[cardKey];
+
+        if (!data || !data.field || !data.options.length) {
+            $menu.html('<div class="hub-status-filter-empty">No status filter available for this record type.</div>');
+            return;
+        }
+
+        const current = this.cardStatusFilters[cardKey];
+        const allOption = `<div class="hub-status-filter-option ${!current ? 'active' : ''}" data-value="">All Statuses</div>`;
+        const options = data.options
+            .map(
+                (o) =>
+                    `<div class="hub-status-filter-option ${current === o ? 'active' : ''}" data-value="${frappe.utils.escape_html(
+                        o
+                    )}">${frappe.utils.escape_html(o)}</div>`
+            )
+            .join('');
+        $menu.html(allOption + options);
     }
 
     // Date range picker as a real dialog — avoids being clipped by any
@@ -352,9 +445,22 @@ class EmployeeHub {
             return;
         }
 
-        const r = await frappe.call('employee_hub.employee_hub.api.get_card_list', { card_key: cardKey, ...params });
+        const r = await frappe.call('employee_hub.employee_hub.api.get_card_list', {
+            card_key: cardKey,
+            ...params,
+            ...this.status_filter_params(cardKey),
+        });
         const { records, total } = r.message || { records: [], total: 0 };
         $body.html(this.render_card_body_html(cardKey, records, total));
+    }
+
+    status_filter_params(cardKey) {
+        const data = this.statusOptionsCache[cardKey];
+        const value = this.cardStatusFilters[cardKey];
+        if (data && data.field && value) {
+            return { status_field: data.field, status_value: value };
+        }
+        return {};
     }
 
     // Shared by both the initial tab render and refresh_card, so a card
@@ -455,7 +561,8 @@ class EmployeeHub {
                             <div class="hub-list-sub">Due ${t.exp_end_date ? frappe.datetime.str_to_user(t.exp_end_date) : 'N/A'}</div>
                          </div>
                          <span class="hub-badge hub-badge-${(t.priority || 'low').toLowerCase()}">${t.priority || 'Low'}</span>
-                         <span class="hub-badge hub-status-${(t.status || '').toLowerCase().replace(/ /g, '-')}">${t.status}</span>`
+                         <span class="hub-badge hub-status-${(t.status || '').toLowerCase().replace(/ /g, '-')}">${t.status}</span>`,
+                        'hub-list-row-3col'
                     ),
             },
             timesheet: {
@@ -512,8 +619,8 @@ class EmployeeHub {
         };
     }
 
-    row(doctype, name, innerHtml) {
-        return `<div class="hub-list-row hub-clickable" data-doc-type="${doctype}" data-doc-name="${frappe.utils.escape_html(
+    row(doctype, name, innerHtml, extraClass) {
+        return `<div class="hub-list-row hub-clickable ${extraClass || ''}" data-doc-type="${doctype}" data-doc-name="${frappe.utils.escape_html(
             name
         )}">${innerHtml}</div>`;
     }
@@ -528,6 +635,7 @@ class EmployeeHub {
                 <div class="hub-card-header">
                     <h4>${title}</h4>
                     <div class="hub-card-header-right">
+                        ${filterable ? this.render_status_filter(cardKey) : ''}
                         ${filterable ? this.render_mini_filter(cardKey) : ''}
                         ${seeMoreKey ? `<a class="hub-view-all" data-route-doctype="${seeMoreKey}">See more</a>` : ''}
                     </div>
@@ -710,7 +818,7 @@ class EmployeeHub {
 
     salary_trend_body_html(salaryTrend) {
         if (salaryTrend && salaryTrend.labels.length) {
-            return `<div class="hub-chart" id="hub-salary-trend"
+            return `<div class="hub-chart hub-chart-static-values" id="hub-salary-trend"
                          data-labels='${JSON.stringify(salaryTrend.labels)}'
                          data-values='${JSON.stringify(salaryTrend.values)}'></div>`;
         }
@@ -867,7 +975,7 @@ class EmployeeHub {
     }
 
     attendance_chart_body_html(chart) {
-        return `<div class="hub-chart" id="hub-attendance-chart"
+        return `<div class="hub-chart hub-chart-static-values" id="hub-attendance-chart"
                      data-labels='${JSON.stringify(chart.labels)}'
                      data-present='${JSON.stringify(chart.present)}'
                      data-absent='${JSON.stringify(chart.absent)}'
