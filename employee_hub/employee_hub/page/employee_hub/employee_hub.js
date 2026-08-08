@@ -90,6 +90,13 @@ class EmployeeHub {
         this.cardPeriods = {}; // cardKey -> {type, from, to}
         this.cardStatusFilters = {}; // cardKey -> selected status/workflow-state string
         this.statusOptionsCache = {}; // cardKey -> {field, options} from get_card_status_options
+
+        // Personalization (Phase 2b)
+        this.layoutState = null; // last-saved-or-default layout, as returned by get_effective_layout
+        this.pendingLayout = null; // working copy while in Customize Mode; only pushed to server on Save
+        this.customizeMode = false;
+        this.isDirty = false;
+
         this.$container = $('<div class="employee-hub">').appendTo(page.body);
         this.init();
     }
@@ -100,18 +107,327 @@ class EmployeeHub {
         // only Employee Hub gets a responsive/shrinking title, not other pages.
         $(this.page.wrapper).find('.title-text').addClass('hub-page-title');
 
-        const [profileRes, todoRes, commRes] = await Promise.all([
+        const [profileRes, todoRes, commRes, layoutRes] = await Promise.all([
             frappe.call('employee_hub.employee_hub.api.get_profile_data'),
             frappe.call('employee_hub.employee_hub.api.get_my_todos_and_events'),
             frappe.call('employee_hub.employee_hub.api.get_open_communication_count'),
+            frappe.call('employee_hub.employee_hub.api.get_effective_layout'),
         ]);
         this.profile = profileRes.message;
         this.employee = this.profile.name;
         this.todoData = todoRes.message;
         this.commCount = commRes.message.count;
+        this.layoutState = layoutRes.message;
+        this.pendingLayout = JSON.parse(JSON.stringify(this.layoutState.items));
 
         this.render_shell();
-        await this.load_tab('dashboard');
+        await this.load_tab(this.first_visible_tab());
+    }
+
+    // -----------------------------------------------------------------
+    // Personalization (Phase 2b) — layout resolution + Customize Mode
+    // -----------------------------------------------------------------
+    active_layout_items() {
+        return this.customizeMode ? this.pendingLayout : this.layoutState.items;
+    }
+
+    tab_layout_map() {
+        const map = {};
+        this.active_layout_items().forEach((i) => {
+            if (i.scope === 'Tab') map[i.tab] = i;
+        });
+        return map;
+    }
+
+    ordered_visible_tabs() {
+        const map = this.tab_layout_map();
+        return HUB_TABS.filter((t) => !map[t.key] || !map[t.key].is_hidden).sort((a, b) => {
+            const seqA = map[a.key] ? map[a.key].sequence : 999;
+            const seqB = map[b.key] ? map[b.key].sequence : 999;
+            return seqA - seqB;
+        });
+    }
+
+    first_visible_tab() {
+        const visible = this.ordered_visible_tabs();
+        return visible.length ? visible[0].key : 'dashboard';
+    }
+
+    // Applies is_hidden + sequence from the active layout to the already-
+    // rendered DOM — hides/reorders elements in place rather than changing
+    // how each tab's render_*_tab function builds its markup. Cards are
+    // reordered *within their existing parent* only (each .hub-grid row
+    // already groups same-type cards together), matching the "like-kind
+    // groups only" reordering constraint.
+    apply_layout_to_dom() {
+        // Tabs: order + visibility of the tab pills themselves.
+        const order = this.ordered_visible_tabs().map((t) => t.key);
+        const hiddenTabs = new Set(HUB_TABS.map((t) => t.key).filter((k) => !order.includes(k)));
+        const $tabbar = this.$container.find('.hub-tabbar');
+        order.forEach((key) => {
+            const $tab = $tabbar.find(`.hub-tab[data-key="${key}"]`);
+            $tab.show().removeClass('hub-item-hidden');
+            $tabbar.append($tab); // re-append in visit order == reorder
+        });
+        hiddenTabs.forEach((key) => {
+            const $tab = $tabbar.find(`.hub-tab[data-key="${key}"]`);
+            $tab.toggle(this.customizeMode).addClass('hub-item-hidden');
+        });
+
+        // Cards within the currently-rendered tab.
+        const cardMap = {};
+        this.active_layout_items().forEach((i) => {
+            if (i.scope === 'Card') cardMap[`${i.tab}|${i.card_key}`] = i;
+        });
+
+        this.$main.find('[data-card-key]').each((_, el) => {
+            const $el = $(el);
+            const key = $el.attr('data-card-key');
+            const item = cardMap[`${this.activeTab}|${key}`];
+            if (!item) return;
+            $el.toggle(!item.is_hidden || this.customizeMode);
+            $el.toggleClass('hub-item-hidden', !!item.is_hidden);
+            $el.attr('data-sequence', item.sequence);
+        });
+
+        // Reorder cards within each parent group (a group = a shared
+        // parent, e.g. one .hub-grid row) by their sequence number.
+        const parents = new Set();
+        this.$main.find('[data-card-key]').each((_, el) => parents.add(el.parentElement));
+        parents.forEach((parent) => {
+            const $children = $(parent).find('> [data-card-key]');
+            const sorted = $children.toArray().sort((a, b) => {
+                return (parseInt($(a).attr('data-sequence'), 10) || 0) - (parseInt($(b).attr('data-sequence'), 10) || 0);
+            });
+            sorted.forEach((el) => $(parent).append(el));
+        });
+    }
+
+    enter_customize_mode() {
+        this.customizeMode = true;
+        this.pendingLayout = JSON.parse(JSON.stringify(this.layoutState.items));
+        this.isDirty = false;
+        this.$container.addClass('hub-customizing');
+        this.refresh_customize_controls();
+        this.apply_layout_to_dom();
+        this.render_customize_affordances();
+    }
+
+    // `discard` = true also reverts pendingLayout back to last-saved state
+    // (used for both the explicit Discard button and the Done/toggle-off
+    // path after confirming an unsaved-changes warning).
+    exit_customize_mode(discard) {
+        this.customizeMode = false;
+        if (discard) {
+            this.pendingLayout = JSON.parse(JSON.stringify(this.layoutState.items));
+        }
+        this.isDirty = false;
+        this.$container.removeClass('hub-customizing');
+        this.refresh_customize_controls();
+        this.apply_layout_to_dom();
+        this.render_customize_affordances();
+    }
+
+    mark_dirty() {
+        if (this.isDirty) return;
+        this.isDirty = true;
+        this.refresh_customize_controls();
+    }
+
+    async save_layout() {
+        const r = await frappe.call('employee_hub.employee_hub.api.save_employee_hub_layout', {
+            items: JSON.stringify(this.pendingLayout),
+        });
+        if (!r.message || !r.message.ok) return;
+        this.layoutState.items = this.pendingLayout;
+        this.layoutState.source = 'personal';
+        frappe.show_alert({ message: __('Layout saved'), indicator: 'green' });
+        this.exit_customize_mode(false);
+    }
+
+    async reset_layout() {
+        await frappe.call('employee_hub.employee_hub.api.reset_employee_hub_layout');
+        const r = await frappe.call('employee_hub.employee_hub.api.get_effective_layout');
+        this.layoutState = r.message;
+        this.pendingLayout = JSON.parse(JSON.stringify(this.layoutState.items));
+        frappe.show_alert({ message: __('Layout reset to default'), indicator: 'green' });
+        this.exit_customize_mode(false);
+    }
+
+    // Adds/removes the eye + drag-handle overlay (with text labels above
+    // them, per spec) on every visible-or-dimmed tab pill and card, and
+    // toggles `draggable` — only called while entering/updating/exiting
+    // Customize Mode, not on every normal render.
+    render_customize_affordances() {
+        this.$container.find('.hub-customize-overlay').remove();
+
+        if (!this.customizeMode) return;
+
+        const tabMap = this.tab_layout_map();
+        const cardMap = {};
+        this.pendingLayout.forEach((i) => {
+            if (i.scope === 'Card') cardMap[`${i.tab}|${i.card_key}`] = i;
+        });
+
+        const overlay = (isHidden) => `
+            <div class="hub-customize-overlay">
+                <span class="hub-eye-icon" title="${isHidden ? 'Show' : 'Hide'}">${
+            isHidden ? this.eye_off_icon_svg() : this.eye_icon_svg()
+        }</span>
+                <span class="hub-drag-handle" title="Drag to reorder">${this.drag_icon_svg()}</span>
+            </div>`;
+
+        this.$container.find('.hub-tab').each((_, el) => {
+            const key = $(el).attr('data-key');
+            const isHidden = !!(tabMap[key] && tabMap[key].is_hidden);
+            $(el).append(overlay(isHidden));
+        });
+
+        this.$main.find('[data-card-key]').each((_, el) => {
+            const key = $(el).attr('data-card-key');
+            const item = cardMap[`${this.activeTab}|${key}`];
+            $(el).append(overlay(!!(item && item.is_hidden)));
+        });
+    }
+
+    eye_icon_svg() {
+        return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+        </svg>`;
+    }
+
+    eye_off_icon_svg() {
+        return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.4 18.4 0 0 1 4.22-5.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>`;
+    }
+
+    drag_icon_svg() {
+        return `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/>
+            <circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/>
+            <circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>
+        </svg>`;
+    }
+
+    // After a drag-drop reorder, recompute sequence numbers for every
+    // sibling in the affected group from their new DOM order, and write
+    // them back into pendingLayout.
+    recompute_sequences_from_dom() {
+        const $tabbar = this.$container.find('.hub-tabbar');
+        $tabbar.find('.hub-tab').each((idx, el) => {
+            const key = $(el).attr('data-key');
+            const item = this.pendingLayout.find((i) => i.scope === 'Tab' && i.tab === key);
+            if (item) item.sequence = idx + 1;
+        });
+
+        const parents = new Set();
+        this.$main.find('[data-card-key]').each((_, el) => parents.add(el.parentElement));
+        parents.forEach((parent) => {
+            $(parent)
+                .find('> [data-card-key]')
+                .each((idx, el) => {
+                    const key = $(el).attr('data-card-key');
+                    const item = this.pendingLayout.find(
+                        (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === key
+                    );
+                    if (item) item.sequence = idx + 1;
+                });
+        });
+    }
+
+    // Smooth pointer-based drag: the dragged element is lifted visually
+    // (CSS transform + subtle scale/shadow) and follows the pointer
+    // directly, while siblings only actually reorder in the DOM once the
+    // pointer crosses their midpoint — giving continuous, immediate visual
+    // feedback instead of native drag-and-drop's default jump-and-snap feel.
+    start_pointer_drag(el, startEvent) {
+        const $el = $(el);
+        const parent = el.parentElement;
+        const isHorizontal = parent.classList.contains('hub-tabbar');
+        const startPos = isHorizontal ? startEvent.clientX : startEvent.clientY;
+
+        $el.addClass('hub-dragging');
+        document.body.style.userSelect = 'none';
+
+        const onMove = (e) => {
+            const pos = isHorizontal ? e.clientX : e.clientY;
+            const delta = pos - startPos;
+            $el.css('transform', isHorizontal ? `translateX(${delta}px)` : `translateY(${delta}px)`);
+
+            // Nearest-sibling-by-center-distance instead of a single-axis
+            // range check — this stays correct even if the group wraps
+            // onto multiple rows (e.g. the tab bar wrapping at an
+            // in-between viewport width), since it's comparing full 2D
+            // position rather than assuming a single row/column.
+            const siblings = Array.from(parent.children).filter((c) => c !== el);
+            if (!siblings.length) return;
+
+            let nearest = null;
+            let nearestDist = Infinity;
+            siblings.forEach((sib) => {
+                const rect = sib.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = sib;
+                }
+            });
+            if (!nearest) return;
+
+            const rect = nearest.getBoundingClientRect();
+            const before = isHorizontal
+                ? e.clientX < rect.left + rect.width / 2
+                : e.clientY < rect.top + rect.height / 2;
+
+            const willMove = before ? el.nextSibling !== nearest : nearest.nextSibling !== el;
+            if (!willMove) return;
+
+            // FLIP: capture every sibling's current position, do the actual
+            // reorder, then for anything that visually jumped, instantly
+            // snap it back (via transform) to where it just was and let a
+            // CSS transition animate it to its real new position on the
+            // next frame — this is what makes siblings glide out of the
+            // way instead of teleporting.
+            const before_rects = new Map();
+            siblings.forEach((sib) => before_rects.set(sib, sib.getBoundingClientRect()));
+
+            if (before) {
+                parent.insertBefore(el, nearest);
+            } else {
+                parent.insertBefore(el, nearest.nextSibling);
+            }
+
+            siblings.forEach((sib) => {
+                const old = before_rects.get(sib);
+                const now = sib.getBoundingClientRect();
+                const dx = old.left - now.left;
+                const dy = old.top - now.top;
+                if (!dx && !dy) return;
+                sib.style.transition = 'none';
+                sib.style.transform = `translate(${dx}px, ${dy}px)`;
+                requestAnimationFrame(() => {
+                    sib.style.transition = 'transform 0.18s ease';
+                    sib.style.transform = '';
+                });
+            });
+        };
+
+        const onUp = () => {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            document.body.style.userSelect = '';
+            $el.removeClass('hub-dragging').css('transform', '');
+            this.recompute_sequences_from_dom();
+            this.mark_dirty();
+        };
+
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
     }
 
     // -----------------------------------------------------------------
@@ -126,6 +442,8 @@ class EmployeeHub {
         $side.append(this.render_todo_card(this.todoData.todos, this.todoData.todos_total));
         $side.append(this.render_events_card(this.todoData.events, this.todoData.events_total));
 
+        this.$container.append(this.render_footer());
+
         this.bind_events();
     }
 
@@ -135,16 +453,20 @@ class EmployeeHub {
         });
 
         this.$container.on('click', '[data-route-doctype]', (e) => {
+            if (this.customizeMode) return;
             e.preventDefault();
             this.go_to_list($(e.currentTarget).attr('data-route-doctype'));
         });
 
         this.$container.on('click', '[data-action]', (e) => {
+            if (this.customizeMode) return;
             this.run_quick_action($(e.currentTarget).attr('data-action'));
         });
 
-        // Any list row with data-doc-type + data-doc-name is clickable
+        // Any list row with data-doc-type + data-doc-name is clickable —
+        // except while customizing, where clicks are for hide/drag only.
         this.$container.on('click', '.hub-clickable', (e) => {
+            if (this.customizeMode) return;
             const doctype = $(e.currentTarget).attr('data-doc-type');
             const name = $(e.currentTarget).attr('data-doc-name');
             if (doctype && name) frappe.set_route('Form', doctype, name);
@@ -162,6 +484,68 @@ class EmployeeHub {
         });
         this.$container.on('click', '.hub-mobile-overlay', () => this.close_mobile_nav());
 
+        // ---- Customize Mode ----
+        this.$container.on('click', '.hub-customize-toggle', () => {
+            if (!this.viewport_allows_customize()) {
+                frappe.msgprint(__('Customize Mode needs a larger screen — please switch to a tablet size or wider.'));
+                return;
+            }
+            this.enter_customize_mode();
+        });
+
+        this.$container.on('click', '.hub-customize-save', () => {
+            if (!this.isDirty) {
+                frappe.show_alert({ message: __('No changes to save'), indicator: 'orange' });
+                this.exit_customize_mode(false);
+                return;
+            }
+            this.save_layout();
+        });
+        this.$container.on('click', '.hub-customize-discard', () => {
+            if (this.isDirty) {
+                frappe.confirm(__('Discard all unsaved layout changes?'), () => this.exit_customize_mode(true));
+            } else {
+                this.exit_customize_mode(true);
+            }
+        });
+        this.$container.on('click', '.hub-customize-reset', () => {
+            frappe.confirm(
+                __('Reset your layout back to the default? This removes all of your personal customizations.'),
+                () => this.reset_layout()
+            );
+        });
+
+        // Eye icon — toggles between "visible" and "hidden" states, in the
+        // working copy only (nothing hits the server until Save). Icon-only,
+        // no visible text label — the title attribute gives a native hover
+        // tooltip instead.
+        this.$container.on('click', '.hub-eye-icon', (e) => {
+            e.stopPropagation();
+            const $target = $(e.currentTarget).closest('[data-card-key], .hub-tab');
+            const cardKey = $target.attr('data-card-key');
+            const tabKey = $target.attr('data-key');
+            const item = cardKey
+                ? this.pendingLayout.find((i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === cardKey)
+                : this.pendingLayout.find((i) => i.scope === 'Tab' && i.tab === tabKey);
+            if (!item) return;
+            item.is_hidden = item.is_hidden ? 0 : 1;
+            this.mark_dirty();
+            this.apply_layout_to_dom();
+            this.render_customize_affordances();
+        });
+
+        // Pointer-events-based drag reordering (not native HTML5 drag-and-
+        // drop, which has a well-known janky default ghost-image/drag feel
+        // browsers can't fully suppress). This gives full control over the
+        // motion via a CSS transform on the dragged element, and only
+        // triggers a real DOM reorder once the pointer crosses a sibling's
+        // midpoint — constrained to siblings sharing the same parent (same
+        // like-kind group, whether a .hub-grid row or the tabbar itself).
+        this.$container.on('pointerdown', '.hub-drag-handle', (e) => {
+            e.preventDefault();
+            const $el = $(e.currentTarget).closest('[data-card-key], .hub-tab');
+            this.start_pointer_drag($el[0], e.originalEvent);
+        });
         // ---- Per-card mini filter dropdown ----
         this.$container.on('click', '.hub-mini-filter', function (e) {
             e.stopPropagation();
@@ -247,6 +631,59 @@ class EmployeeHub {
                 </div>
             </div>
             <div class="hub-mobile-overlay"></div>`;
+    }
+
+    // Small red "Not Saved" badge injected right next to Frappe's own page
+    // title ("Employee Hub", top-left) — not part of our topbar at all.
+    refresh_dirty_indicator() {
+        const $title = $(this.page.wrapper).find('.title-text');
+        $title.siblings('.hub-not-saved-badge').remove();
+        if (this.isDirty) {
+            $title.after('<span class="hub-not-saved-badge">Not Saved</span>');
+        }
+    }
+
+    // Bottom footer — attribution on the left, Customize/Save/Discard/Reset
+    // on the right, positioned after all page content (same placement
+    // convention as the standard Workspace "Edit" control), not floating.
+    render_footer() {
+        const canCustomize = this.layoutState && this.layoutState.allow_personal_customization && this.viewport_allows_customize();
+        return `
+            <div class="hub-footer">
+                <div class="hub-footer-left">Employee Hub — developed by <a href="https://www.linkedin.com/in/sebin-p-sabu" target="_blank" rel="noopener noreferrer" class="hub-footer-link">Sebin P Sabu</a></div>
+                <div class="hub-footer-right">${canCustomize ? this.render_customize_controls() : ''}</div>
+            </div>`;
+    }
+
+    viewport_allows_customize() {
+        return window.innerWidth >= 768;
+    }
+
+    // Just the Customize toggle, or (while active) Reset/Discard/Save —
+    // "Done" removed per feedback: Discard now doubles as "exit without
+    // saving" and Save both commits and exits.
+    render_customize_controls() {
+        if (!this.customizeMode) {
+            return `<button class="hub-customize-toggle" title="Customize this page">${this.customize_icon_svg()} Customize</button>`;
+        }
+        return `
+            <div class="hub-customize-active-controls">
+                <button class="hub-customize-reset" title="Reset to Default">Reset to Default</button>
+                <button class="hub-customize-discard">Discard</button>
+                <button class="hub-customize-save">Save</button>
+            </div>`;
+    }
+
+    refresh_customize_controls() {
+        const $target = this.$container.find('.hub-footer-right');
+        $target.empty().append(this.render_customize_controls());
+        this.refresh_dirty_indicator();
+    }
+
+    customize_icon_svg() {
+        return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
     }
 
     // Instagram-DM-style outline icon instead of a mail emoji.
@@ -385,6 +822,7 @@ class EmployeeHub {
     }
 
     async load_tab(key) {
+        this.activeTab = key;
         this.$main.html('<div class="hub-loading">Loading...</div>');
 
         if (key === 'dashboard') {
@@ -393,6 +831,9 @@ class EmployeeHub {
                 this.tabCache.dashboard = r.message;
             }
             this.render_dashboard_tab(this.tabCache.dashboard);
+            this.apply_layout_to_dom();
+            this.refresh_customize_controls();
+            this.render_customize_affordances();
             return;
         }
 
@@ -408,6 +849,10 @@ class EmployeeHub {
         else if (key === 'performance') this.render_performance_tab(data);
         else if (key === 'requests') this.render_requests_tab(data);
         else if (key === 'documents') this.render_documents_tab();
+
+        this.apply_layout_to_dom();
+        this.refresh_customize_controls();
+        this.render_customize_affordances();
     }
 
     // -----------------------------------------------------------------
@@ -907,7 +1352,7 @@ class EmployeeHub {
             </div>`);
         $row.append($attCard);
         $row.append(`
-            <div class="hub-card">
+            <div class="hub-card" data-card-key="leave-pie">
                 <div class="hub-card-header"><h4>Leave Distribution</h4></div>
                 <div class="hub-card-body">
                 ${
@@ -930,7 +1375,7 @@ class EmployeeHub {
 
         const $row2 = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
         $row2.append(`
-            <div class="hub-card">
+            <div class="hub-card" data-card-key="quick-actions">
                 <div class="hub-card-header"><h4>Quick Actions</h4></div>
                 <div class="hub-card-body">
                     <div class="hub-quick-actions">
@@ -942,7 +1387,7 @@ class EmployeeHub {
                 </div>
             </div>`);
         $row2.append(`
-            <div class="hub-card">
+            <div class="hub-card" data-card-key="birthdays">
                 <div class="hub-card-header"><h4>Upcoming Birthdays</h4></div>
                 <div class="hub-card-body">
                 ${
@@ -1063,6 +1508,7 @@ class EmployeeHub {
     render_stat_cards(stats) {
         const cards = [
             {
+                cardKey: 'stat-attendance',
                 label: 'Attendance',
                 value: `${stats.attendance.present}/${stats.attendance.total_days}`,
                 sub: 'Days Present (This Month)',
@@ -1072,15 +1518,15 @@ class EmployeeHub {
                     (stats.attendance.present / Math.max(stats.attendance.total_days, 1)) * 100
                 )}%"></div></div>`,
             },
-            { label: 'Leaves', value: stats.leaves.available, sub: 'Available Days Left', link: 'leave-application' },
-            { label: 'Tasks', value: stats.tasks.pending, sub: 'Pending Tasks', link: 'task' },
-            { label: 'Timesheets', value: stats.timesheets.hours, sub: 'Hours (This Month)', link: 'timesheet' },
-            { label: 'Salary', value: stats.salary.month, sub: stats.salary.status, link: 'salary-slip' },
+            { cardKey: 'stat-leaves', label: 'Leaves', value: stats.leaves.available, sub: 'Available Days Left', link: 'leave-application' },
+            { cardKey: 'stat-tasks', label: 'Tasks', value: stats.tasks.pending, sub: 'Pending Tasks', link: 'task' },
+            { cardKey: 'stat-timesheets', label: 'Timesheets', value: stats.timesheets.hours, sub: 'Hours (This Month)', link: 'timesheet' },
+            { cardKey: 'stat-salary', label: 'Salary', value: stats.salary.month, sub: stats.salary.status, link: 'salary-slip' },
         ];
         const html = cards
             .map(
                 (c) => `
-                <div class="hub-card hub-stat-card">
+                <div class="hub-card hub-stat-card" data-card-key="${c.cardKey}">
                     <div class="hub-stat-label">${c.label}</div>
                     <div class="hub-stat-value">${c.value}</div>
                     <div class="hub-stat-sub">${c.sub}</div>
@@ -1192,7 +1638,7 @@ class EmployeeHub {
     render_documents_tab() {
         this.$main.empty();
         this.$main.append(`
-            <div class="hub-card">
+            <div class="hub-card" data-card-key="documents-info">
                 <div class="hub-card-header"><h4>Documents</h4></div>
                 <div class="hub-card-body">
                     <p class="text-muted hub-empty">Document tracking (Visa, Passport, Emirates ID, etc.) isn't wired up yet.

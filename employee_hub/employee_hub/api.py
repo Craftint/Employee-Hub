@@ -740,3 +740,145 @@ def get_card_status_options(card_key):
         return {"field": "status", "options": options}
 
     return {"field": None, "options": []}
+
+
+# ---------------------------------------------------------------------------
+# Personalization (Phase 2) — resolving, saving, and resetting a user's
+# layout. Resolution order for now is Personal -> Global Default; Phase 3
+# inserts a Role Profile tier in between once that doctype exists.
+# ---------------------------------------------------------------------------
+def _layout_item_to_dict(row):
+    return {
+        "scope": row.scope,
+        "tab": row.tab,
+        "card_key": row.card_key,
+        "is_hidden": row.is_hidden,
+        "sequence": row.sequence,
+    }
+
+
+def _merge_with_defaults(items):
+    """Forward-compatibility: any tab/card that exists in the app but isn't
+    mentioned in `items` (e.g. added in a later app update, after this
+    layout was last saved) is appended at the end of its group, visible by
+    default — nothing new silently disappears just because a saved layout
+    predates it."""
+    from employee_hub.employee_hub.utils.default_layout import TAB_ROWS, CARD_ROWS
+
+    result = [_layout_item_to_dict(i) for i in items]
+
+    existing_tabs = {r["tab"] for r in result if r["scope"] == "Tab"}
+    existing_cards = {(r["tab"], r["card_key"]) for r in result if r["scope"] == "Card"}
+
+    max_tab_seq = max([r["sequence"] for r in result if r["scope"] == "Tab"], default=0)
+    for row in TAB_ROWS:
+        if row["tab"] not in existing_tabs:
+            max_tab_seq += 1
+            result.append({"scope": "Tab", "tab": row["tab"], "card_key": None, "is_hidden": 0, "sequence": max_tab_seq})
+
+    max_card_seq_by_tab = {}
+    for r in result:
+        if r["scope"] == "Card":
+            max_card_seq_by_tab[r["tab"]] = max(max_card_seq_by_tab.get(r["tab"], 0), r["sequence"])
+
+    for row in CARD_ROWS:
+        key = (row["tab"], row["card_key"])
+        if key not in existing_cards:
+            tab = row["tab"]
+            max_card_seq_by_tab[tab] = max_card_seq_by_tab.get(tab, 0) + 1
+            result.append(
+                {
+                    "scope": "Card",
+                    "tab": tab,
+                    "card_key": row["card_key"],
+                    "is_hidden": 0,
+                    "sequence": max_card_seq_by_tab[tab],
+                }
+            )
+
+    return result
+
+
+@frappe.whitelist()
+def get_effective_layout():
+    """Returns the layout that actually applies to the current user right
+    now, already merged with the current default card/tab list, plus which
+    tier it came from (so the UI can e.g. show "Reset to Default" only when
+    a personal layout is actually in effect)."""
+    user = frappe.session.user
+
+    settings = frappe.get_single("Employee Hub Settings")
+
+    if frappe.db.exists("Employee Hub Layout", user):
+        doc = frappe.get_doc("Employee Hub Layout", user)
+        if doc.layout:
+            return {
+                "source": "personal",
+                "allow_personal_customization": bool(settings.allow_personal_customization),
+                "items": _merge_with_defaults(doc.layout),
+            }
+        # A personal layout record exists but has no rows in it (e.g. an
+        # earlier test call saved an empty list) — treat that exactly the
+        # same as "no personal layout", not as a genuine customization.
+
+    return {
+        "source": "global",
+        "allow_personal_customization": bool(settings.allow_personal_customization),
+        "items": _merge_with_defaults(settings.global_default_layout),
+    }
+
+
+@frappe.whitelist()
+def save_employee_hub_layout(items):
+    """Upserts the current user's personal layout. `items` is a JSON string
+    (or already-parsed list) of {scope, tab, card_key, is_hidden, sequence}
+    dicts — exactly what the Customize Mode UI builds client-side."""
+    settings = frappe.get_single("Employee Hub Settings")
+    if not settings.allow_personal_customization:
+        frappe.throw(_("Personal layout customization is currently disabled by your administrator."))
+
+    if isinstance(items, str):
+        items = frappe.parse_json(items)
+
+    user = frappe.session.user
+
+    if frappe.db.exists("Employee Hub Layout", user):
+        doc = frappe.get_doc("Employee Hub Layout", user)
+        doc.set("layout", [])
+    else:
+        doc = frappe.new_doc("Employee Hub Layout")
+        doc.user = user
+
+    for item in items:
+        doc.append(
+            "layout",
+            {
+                "scope": item.get("scope"),
+                "tab": item.get("tab"),
+                "card_key": item.get("card_key"),
+                "is_hidden": item.get("is_hidden", 0),
+                "sequence": item.get("sequence", 0),
+            },
+        )
+
+    # The doctype now has create=0/write=0 for every role (including the
+    # owner) so nothing can create/edit an Employee Hub Layout except this
+    # endpoint — ignore_permissions is safe here specifically because this
+    # function never accepts a target user from the client; it always
+    # operates on frappe.session.user, so there is no way to write another
+    # user's record through it.
+    doc.save(ignore_permissions=True)
+    return {"ok": True}
+
+
+@frappe.whitelist()
+def reset_employee_hub_layout():
+    """Deletes the current user's personal layout entirely, so they fall
+    straight back through to the Global Default (or, from Phase 3 onward,
+    their Role Profile Layout if one applies)."""
+    user = frappe.session.user
+    if frappe.db.exists("Employee Hub Layout", user):
+        # Same reasoning as save_employee_hub_layout above — this always
+        # targets frappe.session.user, never a client-supplied user.
+        frappe.delete_doc("Employee Hub Layout", user, ignore_permissions=True)
+    return {"ok": True}

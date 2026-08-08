@@ -11,7 +11,7 @@
    "fieldtype": "Check",
    "label": "Allow Employees to Customize Their Own Layout",
    "default": "1",
-   "description": "If unchecked, no employee can enter Customize Mode, regardless of any other setting. (Enforced client-side in Phase 2 — this field just needs to exist and be readable from Phase 1 onward.)"
+   "description": "If unchecked, no employee can enter Customize Mode, regardless of any other setting."
   },
   {
    "fieldname": "section_break_layout",
@@ -21,7 +21,7 @@
   {
    "fieldname": "layout_help",
    "fieldtype": "HTML",
-   "options": "<p class='text-muted' style='margin-bottom:8px;'>This is the baseline layout every employee sees, unless a Role Profile Layout or their own Personal Layout overrides it. It's seeded automatically to match the app's current structure the first time this site runs <code>bench migrate</code> after this feature is installed — edit the rows below to change what's shown/hidden and in what order by default.</p>"
+   "options": "<p class='text-muted' style='margin-bottom:8px;'>This is the baseline layout every employee sees, unless a Role Profile Layout or their own Personal Layout overrides it. It's seeded automatically to match the app's current structure the first time this site runs <code>bench migrate</code> after this feature is installed \u2014 edit the rows below to change what's shown/hidden and in what order by default.</p>"
   },
   {
    "fieldname": "global_default_layout",
@@ -33,13 +33,12 @@
  "permissions": [
   {
    "role": "System Manager",
+   "select": 1,
    "read": 1,
-   "write": 1
-  },
-  {
-   "role": "HR Manager",
-   "read": 1,
-   "write": 1
+   "write": 1,
+   "report": 1,
+   "print": 1
   }
- ]
+ ],
+ "track_changes": 1
 }

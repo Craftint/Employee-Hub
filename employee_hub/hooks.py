@@ -16,6 +16,10 @@ app_include_css = "/assets/employee_hub/css/employee_hub.css"
 # role_home_page = {
 #     "Employee": "employee-hub"
 # }
+after_migrate = [
+    "employee_hub.employee_hub.setup.install.seed_global_default_layout",
+    "employee_hub.employee_hub.setup.install.setup_hr_manager_permissions",
+]
 
 on_login = "employee_hub.employee_hub.boot.on_login"
 

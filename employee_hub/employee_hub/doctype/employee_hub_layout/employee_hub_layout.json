@@ -5,6 +5,7 @@
  "custom": 0,
  "autoname": "field:user",
  "engine": "InnoDB",
+ "read_only": 1,
  "fields": [
   {
    "fieldname": "user",
@@ -26,23 +27,25 @@
  "permissions": [
   {
    "role": "System Manager",
-   "select": 1,
    "read": 1,
-   "write": 1,
-   "report": 1,
-   "print": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 0,
    "create": 0,
    "delete": 0
   },
   {
    "role": "Employee",
-   "select": 1,
    "read": 1,
-   "create": 0,
    "write": 0,
+   "create": 0,
    "delete": 0,
    "if_owner": 1
   }
- ],
- "track_changes": 1
+ ]
 }

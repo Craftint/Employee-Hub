@@ -51,6 +51,7 @@ frappe.after_ajax(() => {
     }
 
     function inject() {
+        if (!frappe.boot || !frappe.boot.employee_hub_home) return; // not an Employee — don't show the link at all
         if (document.querySelector('.employee-hub-pinned-link')) return; // already present, nothing to do
 
         // Try a few known containers for the left workspace sidebar across
