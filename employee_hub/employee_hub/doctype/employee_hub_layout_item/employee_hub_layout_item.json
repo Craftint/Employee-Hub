@@ -1,48 +1,51 @@
 {
  "doctype": "DocType",
- "name": "Employee Hub Layout",
+ "name": "Employee Hub Layout Item",
  "module": "Employee Hub",
  "custom": 0,
- "autoname": "field:user",
+ "istable": 1,
+ "editable_grid": 1,
  "engine": "InnoDB",
  "fields": [
   {
-   "fieldname": "user",
-   "fieldtype": "Link",
-   "options": "User",
-   "label": "User",
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Scope",
+   "options": "Tab\nCard",
    "reqd": 1,
-   "unique": 1,
    "in_list_view": 1,
-   "description": "The document name equals this field's value, so there is always exactly one Employee Hub Layout record per user."
+   "default": "Card",
+   "description": "Tab = this row hides/reorders an entire tab. Card = this row hides/reorders one card within a tab."
   },
   {
-   "fieldname": "layout",
-   "fieldtype": "Table",
-   "label": "Layout Items",
-   "options": "Employee Hub Layout Item"
-  }
- ],
- "permissions": [
-  {
-   "role": "System Manager",
-   "select": 1,
-   "read": 1,
-   "write": 1,
-   "report": 1,
-   "print": 1,
-   "create": 0,
-   "delete": 0
+   "fieldname": "tab",
+   "fieldtype": "Select",
+   "label": "Tab",
+   "options": "dashboard\nattendance\nsalary\ntasks\nperformance\nrequests\ndocuments",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "For Scope=Tab, this IS the tab being controlled. For Scope=Card, this is the tab the card belongs to."
   },
   {
-   "role": "Employee",
-   "select": 1,
-   "read": 1,
-   "create": 0,
-   "write": 0,
-   "delete": 0,
-   "if_owner": 1
+   "fieldname": "card_key",
+   "fieldtype": "Data",
+   "label": "Card Key",
+   "in_list_view": 1,
+   "description": "Must match a cardKey used in employee_hub.js. Leave blank when Scope = Tab."
+  },
+  {
+   "fieldname": "is_hidden",
+   "fieldtype": "Check",
+   "label": "Hidden",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sequence",
+   "fieldtype": "Int",
+   "label": "Sequence",
+   "in_list_view": 1,
+   "reqd": 1,
+   "description": "Relative order within whatever group this item belongs to (tabs among tabs; within a tab, stat cards among stat cards, charts among charts, list cards among list cards)."
   }
- ],
- "track_changes": 1
+ ]
 }
