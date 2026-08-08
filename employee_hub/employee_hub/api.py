@@ -546,11 +546,11 @@ def get_tab_data(tab):
         start, end = resolve_period("month")
         slips, slips_total = list_in_range(
             "Salary Slip", {"employee": employee}, "posting_date",
-            ["name", "start_date", "end_date", "net_pay", "status"], start, end,
+            ["name", "start_date", "end_date", "net_pay", "status", "currency"], start, end,
         )
         claims, claims_total = list_in_range(
             "Expense Claim", {"employee": employee}, "posting_date",
-            ["name", "posting_date", "total_claimed_amount", "status"], start, end,
+            ["name", "posting_date", "total_claimed_amount", "status", "currency"], start, end,
         )
         trend_start, trend_end = resolve_card_period("salary-trend")
         return {
@@ -639,13 +639,13 @@ LIST_CARD_CONFIG = {
     "salary-slip": {
         "doctype": "Salary Slip",
         "date_field": "posting_date",
-        "fields": ["name", "start_date", "end_date", "net_pay", "status"],
+        "fields": ["name", "start_date", "end_date", "net_pay", "status", "currency"],
         "base_filters": {},
     },
     "expense-claim": {
         "doctype": "Expense Claim",
         "date_field": "posting_date",
-        "fields": ["name", "posting_date", "total_claimed_amount", "status"],
+        "fields": ["name", "posting_date", "total_claimed_amount", "status", "currency"],
         "base_filters": {},
     },
     "task": {

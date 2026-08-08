@@ -352,10 +352,13 @@ class EmployeeHub {
         $el.addClass('hub-dragging');
         document.body.style.userSelect = 'none';
 
-        const onMove = (e) => {
-            const pos = isHorizontal ? e.clientX : e.clientY;
-            const delta = pos - startPos;
-            $el.css('transform', isHorizontal ? `translateX(${delta}px)` : `translateY(${delta}px)`);
+        let latestEvent = null;
+        let rafScheduled = false;
+
+        const processMove = () => {
+            rafScheduled = false;
+            const e = latestEvent;
+            if (!e) return;
 
             // Nearest-sibling-by-center-distance instead of a single-axis
             // range check — this stays correct even if the group wraps
@@ -415,6 +418,22 @@ class EmployeeHub {
                     sib.style.transform = '';
                 });
             });
+        };
+
+        const onMove = (e) => {
+            // The dragged element's own tracking stays perfectly responsive
+            // (updated every single event, no throttling) — only the
+            // expensive nearest-sibling search + potential DOM reorder is
+            // batched to once per frame.
+            const pos = isHorizontal ? e.clientX : e.clientY;
+            const delta = pos - startPos;
+            $el.css('transform', isHorizontal ? `translateX(${delta}px)` : `translateY(${delta}px)`);
+
+            latestEvent = e;
+            if (!rafScheduled) {
+                rafScheduled = true;
+                requestAnimationFrame(processMove);
+            }
         };
 
         const onUp = () => {
@@ -977,7 +996,7 @@ class EmployeeHub {
                         s.name,
                         `<div>
                             <div class="hub-list-title">${frappe.datetime.str_to_user(s.start_date)} – ${frappe.datetime.str_to_user(s.end_date)}</div>
-                            <div class="hub-list-sub">${format_currency(s.net_pay)}</div>
+                            <div class="hub-list-sub">${format_currency(s.net_pay, s.currency)}</div>
                          </div>
                          <span class="hub-badge hub-status-${(s.status || '').toLowerCase()}">${s.status}</span>`
                     ),
@@ -989,7 +1008,7 @@ class EmployeeHub {
                         'Expense Claim',
                         e.name,
                         `<div>
-                            <div class="hub-list-title">${format_currency(e.total_claimed_amount)}</div>
+                            <div class="hub-list-title">${format_currency(e.total_claimed_amount, e.currency)}</div>
                             <div class="hub-list-sub">${frappe.datetime.str_to_user(e.posting_date)}</div>
                          </div>
                          <span class="hub-badge hub-status-${(e.status || '').toLowerCase()}">${e.status}</span>`
@@ -1263,7 +1282,7 @@ class EmployeeHub {
 
     salary_trend_body_html(salaryTrend) {
         if (salaryTrend && salaryTrend.labels.length) {
-            return `<div class="hub-chart hub-chart-static-values" id="hub-salary-trend"
+            return `<div class="hub-chart" id="hub-salary-trend"
                          data-labels='${JSON.stringify(salaryTrend.labels)}'
                          data-values='${JSON.stringify(salaryTrend.values)}'></div>`;
         }
@@ -1280,11 +1299,9 @@ class EmployeeHub {
                 datasets: [{ name: 'Net Pay', chartType: 'line', values: JSON.parse($line.attr('data-values')) }],
             },
             type: 'line',
-            height: 200,
+            height: 320,
             colors: ['#6C5CE7'],
-            lineOptions: { regionFill: 1 },
             hideLegend: 1,
-            valuesOverPoints: 1,
         });
         this.hide_zero_value_labels($line[0]);
     }
