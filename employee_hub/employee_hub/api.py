@@ -857,7 +857,16 @@ def get_effective_layout():
 def save_employee_hub_layout(items):
     """Upserts the current user's personal layout. `items` is a JSON string
     (or already-parsed list) of {scope, tab, card_key, is_hidden, sequence}
-    dicts — exactly what the Customize Mode UI builds client-side."""
+    dicts — exactly what the Customize Mode UI builds client-side.
+
+    Matches each incoming item against the doc's EXISTING rows by
+    (scope, tab, card_key) and updates matching rows in place, rather than
+    clearing the whole table and re-appending everything fresh every time.
+    That distinction matters for the version/audit trail specifically —
+    wiping and rebuilding made every save look like "all N rows deleted, N
+    rows added" regardless of how small the real change was (e.g. toggling
+    one card's visibility). Preserving row identity means the audit trail
+    now shows the actual field that changed on the actual row that changed."""
     settings = frappe.get_single("Employee Hub Settings")
     if not settings.allow_personal_customization:
         frappe.throw(_("Personal layout customization is currently disabled by your administrator."))
@@ -869,22 +878,37 @@ def save_employee_hub_layout(items):
 
     if frappe.db.exists("Employee Hub Layout", user):
         doc = frappe.get_doc("Employee Hub Layout", user)
-        doc.set("layout", [])
     else:
         doc = frappe.new_doc("Employee Hub Layout")
         doc.user = user
+        doc.layout = []
 
+    existing_by_key = {(row.scope, row.tab, row.card_key or ""): row for row in doc.layout}
+
+    incoming_keys = set()
     for item in items:
-        doc.append(
-            "layout",
-            {
-                "scope": item.get("scope"),
-                "tab": item.get("tab"),
-                "card_key": item.get("card_key"),
-                "is_hidden": item.get("is_hidden", 0),
-                "sequence": item.get("sequence", 0),
-            },
-        )
+        key = (item.get("scope"), item.get("tab"), item.get("card_key") or "")
+        incoming_keys.add(key)
+        existing_row = existing_by_key.get(key)
+        if existing_row:
+            existing_row.is_hidden = item.get("is_hidden", 0)
+            existing_row.sequence = item.get("sequence", 0)
+        else:
+            doc.append(
+                "layout",
+                {
+                    "scope": item.get("scope"),
+                    "tab": item.get("tab"),
+                    "card_key": item.get("card_key"),
+                    "is_hidden": item.get("is_hidden", 0),
+                    "sequence": item.get("sequence", 0),
+                },
+            )
+
+    # Anything that existed before but isn't in the incoming list at all
+    # (not just hidden — genuinely absent) gets removed, matched by the
+    # same identity used above.
+    doc.layout = [row for row in doc.layout if (row.scope, row.tab, row.card_key or "") in incoming_keys]
 
     # The doctype now has create=0/write=0 for every role (including the
     # owner) so nothing can create/edit an Employee Hub Layout except this
@@ -991,3 +1015,27 @@ def get_birthdays_card():
     if not employee:
         frappe.throw(_("No Employee record linked."))
     return {"birthdays": get_upcoming_birthdays(employee)}
+
+
+@frappe.whitelist()
+def reset_global_default_layout():
+    """Resets the Global Default Layout back to the app's original,
+    out-of-the-box structure. System Manager only — enforced here
+    server-side (the client also checks, for a friendlier message without
+    a round trip, but this is the check that actually can't be bypassed).
+    Goes through a normal doc.save() (not ignore_permissions) so it's
+    properly captured in this document's version/audit history."""
+    if "System Manager" not in frappe.get_roles():
+        frappe.throw(
+            _("You are not permitted to Reset the Employee Hub Layout. Someone with System Manager access can."),
+            frappe.PermissionError,
+        )
+
+    from employee_hub.employee_hub.utils.default_layout import TAB_ROWS, CARD_ROWS
+
+    settings = frappe.get_single("Employee Hub Settings")
+    settings.set("global_default_layout", [])
+    for row in TAB_ROWS + CARD_ROWS:
+        settings.append("global_default_layout", row)
+    settings.save()
+    return {"ok": True}

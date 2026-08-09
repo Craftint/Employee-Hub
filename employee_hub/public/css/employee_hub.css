@@ -1084,3 +1084,23 @@ html[data-theme="dark"] .hub-not-saved-badge {
 html[data-theme="dark"] .hub-sortable-ghost {
     background: #2a2a2d;
 }
+/* "Reset to Default" button on the Employee Hub Settings form itself (not
+   the Customize Mode footer — this is Frappe's own Desk form toolbar).
+   Uses currentColor for the icon so it follows the text color, meaning it
+   automatically adapts across themes with no separate dark-mode override
+   needed beyond the two rules below. */
+.hub-reset-default-btn {
+    background: var(--hub-purple) !important;
+    border-color: var(--hub-purple) !important;
+    color: #fff !important;
+}
+.hub-reset-default-btn:hover {
+    background: var(--hub-purple-dark) !important;
+    border-color: var(--hub-purple-dark) !important;
+    color: #fff !important;
+}
+html[data-theme="dark"] .hub-reset-default-btn {
+    background: var(--hub-purple) !important;
+    border-color: var(--hub-purple) !important;
+    color: #fff !important;
+}
