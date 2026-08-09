@@ -1,7 +1,21 @@
 # Employee Hub — developed by Sebin P Sabu (sebin.freelance@gmail.com)
 
 import frappe
+import click
 from employee_hub.employee_hub.utils.default_layout import TAB_ROWS, CARD_ROWS
+
+
+def print_credits():
+    """Shows a small branded banner in the terminal during `bench
+    install-app` and every `bench migrate` — click is already a bench
+    dependency, so this needs nothing extra installed."""
+    click.echo("")
+    click.secho("=" * 58, fg="cyan")
+    click.secho("  Employee Hub", fg="cyan", bold=True)
+    click.secho("  Developed by Sebin P Sabu", fg="cyan")
+    click.secho("  https://www.linkedin.com/in/sebin-p-sabu", fg="cyan")
+    click.secho("=" * 58, fg="cyan")
+    click.echo("")
 
 
 def seed_global_default_layout():
