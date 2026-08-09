@@ -98,16 +98,19 @@ def resolve_card_period(card_key, period=None, from_date=None, to_date=None):
 
 def list_in_range(doctype, filters, date_field, fields, start, end, limit=5):
     """Fetch up to `limit` records of `doctype` whose `date_field` falls in
-    [start, end], most-recently-updated first. Returns (records, total_count)
-    — total_count lets the UI show "X of Y" so filtering is visibly working
-    even when the card preview is capped. Returns ([], 0) if the doctype
-    isn't installed on this site."""
+    [start, end], most recent by that same date field first — so the 5
+    shown are always the most recent dates within the selected period, not
+    whichever 5 happened to be edited most recently (which could be any
+    date at all once the period is wide, e.g. "This Year"). Returns
+    (records, total_count) — total_count lets the UI show "X of Y" so
+    filtering is visibly working even when the card preview is capped.
+    Returns ([], 0) if the doctype isn't installed on this site."""
     if not frappe.db.exists("DocType", doctype):
         return [], 0
     filters = dict(filters)
     filters[date_field] = ["between", [start, end]]
     total = frappe.db.count(doctype, filters)
-    records = frappe.get_list(doctype, filters=filters, fields=fields, order_by="modified desc", limit=limit)
+    records = frappe.get_list(doctype, filters=filters, fields=fields, order_by=f"{date_field} desc", limit=limit)
     return records, total
 
 
@@ -329,7 +332,18 @@ def get_attendance_chart(start=None, end=None, period=None, from_date=None, to_d
     max_buckets = 60  # ~1 year of weekly buckets; a hard safety cap
     while cur <= end and len(buckets) < max_buckets:
         week_end = min(add_days(cur, 6), end)
-        buckets.append({"label": cur.strftime("%d %b"), "start": cur, "end": week_end, "present": 0, "absent": 0, "half_day": 0})
+        buckets.append(
+            {
+                "label": cur.strftime("%d %b"),
+                "start": cur,
+                "end": week_end,
+                "present": 0,
+                "absent": 0,
+                "half_day": 0,
+                "on_leave": 0,
+                "work_from_home": 0,
+            }
+        )
         cur = add_days(week_end, 1)
 
     for r in records:
@@ -342,6 +356,10 @@ def get_attendance_chart(start=None, end=None, period=None, from_date=None, to_d
                     b["absent"] += 1
                 elif r.status == "Half Day":
                     b["half_day"] += 1
+                elif r.status == "On Leave":
+                    b["on_leave"] += 1
+                elif r.status == "Work From Home":
+                    b["work_from_home"] += 1
                 break
 
     return {
@@ -349,6 +367,8 @@ def get_attendance_chart(start=None, end=None, period=None, from_date=None, to_d
         "present": [b["present"] for b in buckets],
         "absent": [b["absent"] for b in buckets],
         "half_day": [b["half_day"] for b in buckets],
+        "on_leave": [b["on_leave"] for b in buckets],
+        "work_from_home": [b["work_from_home"] for b in buckets],
     }
 
 
@@ -461,14 +481,15 @@ def get_task_status_chart(period=None, from_date=None, to_date=None):
 
 
 def get_upcoming_birthdays(employee):
-    rows = frappe.db.sql(
-        """
-        select name, employee_name, image, date_of_birth
-        from `tabEmployee`
-        where status='Active' and name != %s and date_of_birth is not null
-        """,
-        employee,
-        as_dict=True,
+    # frappe.get_list (not frappe.db.sql / frappe.get_all) specifically
+    # because it applies the current session user's actual Employee
+    # permissions automatically — any employee they don't have read access
+    # to (via User Permissions, employee restrictions, etc.) is correctly
+    # excluded. The previous raw-SQL version bypassed all of that.
+    rows = frappe.get_list(
+        "Employee",
+        filters={"status": "Active", "name": ["!=", employee], "date_of_birth": ["is", "set"]},
+        fields=["name", "employee_name", "image", "date_of_birth"],
     )
     today_date = getdate(nowdate())
     upcoming = []
@@ -768,7 +789,12 @@ def _merge_with_defaults(items):
     result = [_layout_item_to_dict(i) for i in items]
 
     existing_tabs = {r["tab"] for r in result if r["scope"] == "Tab"}
-    existing_cards = {(r["tab"], r["card_key"]) for r in result if r["scope"] == "Card"}
+    # card_key alone, NOT (tab, card_key) — a card that's been moved to a
+    # different tab still has the same card_key, so this correctly
+    # recognizes it as already accounted for rather than mistaking the move
+    # for a missing card and silently re-adding the default (old tab, card)
+    # pair, which is what was undoing every cross-tab move.
+    existing_card_keys = {r["card_key"] for r in result if r["scope"] == "Card"}
 
     max_tab_seq = max([r["sequence"] for r in result if r["scope"] == "Tab"], default=0)
     for row in TAB_ROWS:
@@ -782,8 +808,7 @@ def _merge_with_defaults(items):
             max_card_seq_by_tab[r["tab"]] = max(max_card_seq_by_tab.get(r["tab"], 0), r["sequence"])
 
     for row in CARD_ROWS:
-        key = (row["tab"], row["card_key"])
-        if key not in existing_cards:
+        if row["card_key"] not in existing_card_keys:
             tab = row["tab"]
             max_card_seq_by_tab[tab] = max_card_seq_by_tab.get(tab, 0) + 1
             result.append(
@@ -882,3 +907,87 @@ def reset_employee_hub_layout():
         # targets frappe.session.user, never a client-supplied user.
         frappe.delete_doc("Employee Hub Layout", user, ignore_permissions=True)
     return {"ok": True}
+
+# ---------------------------------------------------------------------------
+# Single-card fetchers — these let ANY card be rendered on ANY tab, which is
+# what "Move To" needs: once a card is moved to a different tab via
+# Customize Mode, that tab's renderer needs a way to fetch just that one
+# card's data on its own, rather than relying on the bulk per-tab endpoints
+# above (which only ever return the cards that tab natively ships with).
+# Charts and list-type cards already had this via get_attendance_chart /
+# get_salary_trend_chart / get_task_status_chart / get_card_list — these
+# fill in the remaining card types that didn't have an equivalent yet.
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+def get_single_stat(stat_key):
+    user = frappe.session.user
+    employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    if not employee:
+        frappe.throw(_("No Employee record linked."))
+
+    start, end = resolve_period("month")
+
+    if stat_key == "stat-attendance":
+        present = frappe.db.count(
+            "Attendance",
+            {"employee": employee, "attendance_date": ["between", [start, end]], "status": "Present", "docstatus": 1},
+        )
+        days_in_period = (end - start).days + 1
+        return {
+            "label": "Attendance",
+            "value": f"{present}/{days_in_period}",
+            "sub": "Days Present (This Month)",
+            "link": "attendance",
+            "percent": min(100, (present / max(days_in_period, 1)) * 100),
+        }
+
+    if stat_key == "stat-leaves":
+        leave_data = get_leave_summary(employee)
+        total_available = sum([l.get("available", 0) for l in leave_data])
+        return {"label": "Leaves", "value": total_available, "sub": "Available Days Left", "link": "leave-application"}
+
+    if stat_key == "stat-tasks":
+        pending_tasks = frappe.db.count(
+            "Task", {"_assign": ["like", f"%{user}%"], "status": ["not in", ["Completed", "Cancelled"]]}
+        )
+        return {"label": "Tasks", "value": pending_tasks, "sub": "Pending Tasks", "link": "task"}
+
+    if stat_key == "stat-timesheets":
+        hours_row = frappe.db.sql(
+            """
+            select sum(td.hours)
+            from `tabTimesheet Detail` td
+            inner join `tabTimesheet` t on t.name = td.parent
+            where t.employee=%s and t.docstatus < 2 and date(td.from_time) between %s and %s
+            """,
+            (employee, start, end),
+        )
+        hours = hours_row[0][0] if hours_row and hours_row[0][0] else 0
+        return {"label": "Timesheets", "value": round(hours, 1), "sub": "Hours (This Month)", "link": "timesheet"}
+
+    if stat_key == "stat-salary":
+        slip = get_latest_salary_slip(employee)
+        return {
+            "label": "Salary",
+            "value": formatdate(slip.end_date, "MMM yyyy") if slip else "N/A",
+            "sub": "Paid" if slip else "N/A",
+            "link": "salary-slip",
+        }
+
+    frappe.throw(_("Unknown stat: {0}").format(stat_key))
+
+
+@frappe.whitelist()
+def get_leave_balance_card():
+    employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+    if not employee:
+        frappe.throw(_("No Employee record linked."))
+    return {"leave_balance": get_leave_summary(employee)}
+
+
+@frappe.whitelist()
+def get_birthdays_card():
+    employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+    if not employee:
+        frappe.throw(_("No Employee record linked."))
+    return {"birthdays": get_upcoming_birthdays(employee)}

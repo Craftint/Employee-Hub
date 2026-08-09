@@ -532,6 +532,15 @@
     margin-right: 4px;
     flex-shrink: 0;
 }
+.hub-avatar-initials {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--hub-purple), #a29bfe);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+}
 
 /* Badges ------------------------------------------------------------------ */
 .hub-badge {
@@ -955,21 +964,90 @@ html[data-theme="dark"] .hub-qa-pink {
 }
 .hub-drag-handle { cursor: grab; touch-action: none; }
 .hub-drag-handle:active { cursor: grabbing; }
+/* The active tab has a solid purple background — the default dark-grey
+   icon color is invisible against it, so it needs its own override rather
+   than relying on the general rule above. */
+.hub-tab.active .hub-eye-icon,
+.hub-tab.active .hub-drag-handle {
+    color: #fff;
+}
+.hub-tab.active .hub-eye-icon:hover,
+.hub-tab.active .hub-drag-handle:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+.hub-move-to-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    color: #6b6b80;
+    cursor: pointer;
+}
+.hub-move-to-icon:hover {
+    background: rgba(108, 92, 231, 0.1);
+    color: var(--hub-purple);
+}
+.hub-move-to-menu {
+    position: absolute;
+    top: 40px;
+    right: 8px;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(20, 20, 40, 0.16);
+    min-width: 160px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 6px;
+    z-index: 30;
+}
+.hub-move-to-option {
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #2d2d3a;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.hub-move-to-option:hover {
+    background: var(--hub-bg);
+    color: var(--hub-purple);
+}
+html[data-theme="dark"] .hub-move-to-icon {
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-move-to-menu {
+    background: #2a2a2d;
+    border-color: #3d3d40;
+}
+html[data-theme="dark"] .hub-move-to-option {
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-move-to-option:hover {
+    background: #3d3d40;
+}
 
-/* While actively being dragged (pointer-based, not native HTML5 DnD) —
-   lifted slightly with a shadow for clear visual feedback, and no
-   transition on itself (it must track the pointer instantly); reordering
-   siblings still animate smoothly via the transition below. */
-.hub-dragging {
-    z-index: 20;
+/* SortableJS's own drag-state classes, styled to match the app's theme. */
+.hub-sortable-ghost {
+    /* the placeholder gap left where the item will land */
+    opacity: 0.35;
+    background: var(--hub-bg);
+    border: 2px dashed var(--hub-purple);
+}
+.hub-sortable-chosen {
     box-shadow: 0 8px 24px rgba(20, 20, 40, 0.18);
+}
+.hub-sortable-drag {
+    /* the item actively following the cursor */
     opacity: 0.95;
-    pointer-events: none;
-    will-change: transform;
+    cursor: grabbing;
 }
 .hub-customizing [data-card-key],
 .hub-customizing .hub-tab {
-    transition: transform 0.18s ease;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 /* Customize Mode requires at least a tablet-width screen — hidden below
@@ -1002,4 +1080,7 @@ html[data-theme="dark"] .hub-drag-handle {
 }
 html[data-theme="dark"] .hub-not-saved-badge {
     background: rgba(231, 76, 60, 0.15);
+}
+html[data-theme="dark"] .hub-sortable-ghost {
+    background: #2a2a2d;
 }
