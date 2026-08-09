@@ -14,7 +14,7 @@
    "reqd": 1,
    "unique": 1,
    "in_list_view": 1,
-   "description": "The document name equals this field's value, so there is always exactly one Employee Hub Layout record per user."
+   "description": "The employee this personal layout belongs to."
   },
   {
    "fieldname": "layout",

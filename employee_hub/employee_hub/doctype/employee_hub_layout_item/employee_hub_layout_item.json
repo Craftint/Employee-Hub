@@ -15,7 +15,7 @@
    "reqd": 1,
    "in_list_view": 1,
    "default": "Card",
-   "description": "Tab = this row hides/reorders an entire tab. Card = this row hides/reorders one card within a tab."
+   "description": "Choose Tab to control a whole tab, or Card to control just one card inside a tab."
   },
   {
    "fieldname": "tab",
@@ -24,14 +24,18 @@
    "options": "dashboard\nattendance\nsalary\ntasks\nperformance\nrequests\ndocuments",
    "reqd": 1,
    "in_list_view": 1,
-   "description": "For Scope=Tab, this IS the tab being controlled. For Scope=Card, this is the tab the card belongs to."
+   "description": "Which tab this applies to."
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "card_key",
    "fieldtype": "Data",
    "label": "Card Key",
    "in_list_view": 1,
-   "description": "Must match a cardKey used in employee_hub.js. Leave blank when Scope = Tab."
+   "description": "Which card this is. Leave empty if you picked Tab above."
   },
   {
    "fieldname": "is_hidden",
@@ -40,12 +44,16 @@
    "in_list_view": 1
   },
   {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "sequence",
    "fieldtype": "Int",
    "label": "Sequence",
    "in_list_view": 1,
    "reqd": 1,
-   "description": "Relative order within whatever group this item belongs to (tabs among tabs; within a tab, stat cards among stat cards, charts among charts, list cards among list cards)."
+   "description": "The order this appears in, compared to similar items."
   }
  ]
 }

@@ -75,6 +75,39 @@ const CARD_DEFAULT_PERIOD = {
 function default_period_for(cardKey) {
     return CARD_DEFAULT_PERIOD[cardKey] || 'today';
 }
+
+// Describes every card well enough to build and populate it on ANY tab —
+// this is what makes "Move To" actually work: without this, a moved card's
+// data changes correctly but nothing ever draws its HTML on the new tab,
+// since each tab's render function only ever knew how to build its own
+// original, fixed set of cards.
+const CARD_REGISTRY = {
+    'stat-attendance': { kind: 'stat' },
+    'stat-leaves': { kind: 'stat' },
+    'stat-tasks': { kind: 'stat' },
+    'stat-timesheets': { kind: 'stat' },
+    'stat-salary': { kind: 'stat' },
+    'attendance-chart': { kind: 'chart-attendance' },
+    'leave-pie': { kind: 'chart-leave-pie' },
+    'salary-trend': { kind: 'chart-salary-trend' },
+    'task-donut': { kind: 'chart-task-donut' },
+    'quick-actions': { kind: 'static-quick-actions' },
+    'documents-info': { kind: 'static-documents-info' },
+    'leave-balance': { kind: 'leave-balance' },
+    'birthdays': { kind: 'birthdays' },
+    attendance: { kind: 'list', title: 'Attendance', seeMoreKey: 'attendance' },
+    'employee-checkin': { kind: 'list', title: 'Employee Checkin', seeMoreKey: 'employee-checkin' },
+    'leave-application': { kind: 'list', title: 'Leave Applications', seeMoreKey: 'leave-application' },
+    'attendance-request': { kind: 'list', title: 'Attendance Requests', seeMoreKey: 'attendance-request' },
+    'shift-assignment': { kind: 'list', title: 'Shifts Allocated', seeMoreKey: 'shift-assignment', filterable: false },
+    'salary-slip': { kind: 'list', title: 'Salary Slips', seeMoreKey: 'salary-slip' },
+    'expense-claim': { kind: 'list', title: 'Expense Claims', seeMoreKey: 'expense-claim' },
+    task: { kind: 'list', title: 'My Tasks', seeMoreKey: 'task' },
+    timesheet: { kind: 'list', title: 'Timesheets', seeMoreKey: 'timesheet' },
+    appraisal: { kind: 'list', title: 'Appraisals', seeMoreKey: 'appraisal' },
+    'hr-request': { kind: 'list', title: 'My HR Requests', seeMoreKey: 'hr-request' },
+};
+
 // NOTE ON LAYOUT: column widths are driven entirely by CSS ([data-cols]
 // attribute selectors + media queries), not JS. This is deliberate — a
 // previous version set grid-template-columns via JS *after* the charts
@@ -203,6 +236,204 @@ class EmployeeHub {
         });
     }
 
+    // Finds every card assigned (via layout data) to the current tab that
+    // the tab's own hardcoded render function didn't produce — i.e. a card
+    // that's been moved here via "Move To" — builds a placeholder for it
+    // in the right category row (creating that row if the tab doesn't have
+    // one yet), and populates it using whichever endpoint that card type
+    // uses. This runs after every tab render, customizing or not, so a
+    // saved move shows up correctly even outside Customize Mode.
+    async inject_foreign_cards() {
+        const assignedKeys = this.active_layout_items()
+            .filter((i) => i.scope === 'Card' && i.tab === this.activeTab)
+            .map((i) => i.card_key);
+
+        const missing = assignedKeys.filter(
+            (key) => CARD_REGISTRY[key] && this.$main.find(`[data-card-key="${key}"]`).length === 0
+        );
+        if (!missing.length) return;
+
+        let $listRow = this.$main.find('.hub-grid').filter((_, row) => {
+            const $first = $(row).find('[data-card-key]').first();
+            return $first.length && $first.attr('data-category') === 'list';
+        }).last();
+        if (!$listRow.length) {
+            $listRow = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
+        }
+
+        for (const key of missing) {
+            await this.inject_one_card(key, $listRow);
+        }
+
+        this.apply_layout_to_dom();
+        if (this.customizeMode) {
+            this.render_customize_affordances();
+            this.init_sortable();
+        }
+    }
+
+    async inject_one_card(key, $row) {
+        const meta = CARD_REGISTRY[key];
+        if (!meta) return;
+
+        if (meta.kind === 'list') {
+            const $placeholder = $(this.list_card(meta.title, meta.seeMoreKey, key, [], meta.filterable !== false, 0));
+            $placeholder.attr('data-category', 'list');
+            $row.append($placeholder);
+            await this.refresh_card(key);
+            return;
+        }
+
+        if (meta.kind === 'stat') {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_single_stat', { stat_key: key });
+            const s = r.message;
+            const extra =
+                key === 'stat-attendance'
+                    ? `<div class="hub-progress"><div class="hub-progress-bar" style="width:${s.percent}%"></div></div>`
+                    : '';
+            $row.append(`
+                <div class="hub-card hub-stat-card" data-card-key="${key}" data-category="list">
+                    <div class="hub-stat-label">${s.label}</div>
+                    <div class="hub-stat-value">${s.value}</div>
+                    <div class="hub-stat-sub">${s.sub}</div>
+                    ${extra}
+                    <a class="hub-card-link" data-route-doctype="${s.link}">View ${s.label} &rarr;</a>
+                </div>`);
+            return;
+        }
+
+        if (meta.kind === 'chart-attendance') {
+            $row.append(`<div class="hub-card" data-card-key="${key}" data-category="list">
+                <div class="hub-card-header"><h4>Attendance Overview</h4>
+                    <div class="hub-card-header-right">${this.render_mini_filter('attendance-chart')}</div>
+                </div>
+                <div class="hub-card-body"><div class="hub-loading">Loading...</div></div>
+            </div>`);
+            const r = await frappe.call('employee_hub.employee_hub.api.get_attendance_chart', {
+                period: (this.cardPeriods['attendance-chart'] || { type: default_period_for('attendance-chart') }).type,
+            });
+            const $card = this.$main.find(`[data-card-key="${key}"]`);
+            $card.find('.hub-card-body').html(this.attendance_chart_body_html(r.message));
+            this.init_attendance_chart($card);
+            return;
+        }
+
+        if (meta.kind === 'chart-leave-pie') {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_dashboard_data');
+            const pie = r.message.leave_pie;
+            $row.append(`<div class="hub-card" data-card-key="${key}" data-category="list">
+                <div class="hub-card-header"><h4>Leave Distribution</h4></div>
+                <div class="hub-card-body">
+                ${
+                    pie
+                        ? `<div class="hub-chart" id="hub-leave-pie-${key}" data-labels='${JSON.stringify(
+                              pie.labels
+                          )}' data-values='${JSON.stringify(pie.values)}'></div>` +
+                          this.render_swatch_legend(pie.labels, ['#6C5CE7', '#00b894', '#fdcb6e', '#e17055', '#0984e3', '#e84393'])
+                        : '<p class="text-muted hub-empty">No leave allocations found.</p>'
+                }
+                </div>
+            </div>`);
+            if (pie) {
+                const $el = this.$main.find(`#hub-leave-pie-${key}`);
+                new frappe.Chart($el[0], {
+                    data: { labels: JSON.parse($el.attr('data-labels')), datasets: [{ values: JSON.parse($el.attr('data-values')) }] },
+                    type: 'pie',
+                    height: 220,
+                    colors: ['#6C5CE7', '#00b894', '#fdcb6e', '#e17055', '#0984e3', '#e84393'],
+                    hideLegend: 1,
+                });
+            }
+            return;
+        }
+
+        if (meta.kind === 'chart-salary-trend') {
+            $row.append(this.render_salary_trend_section({ labels: [] }));
+            const period = this.cardPeriods['salary-trend'] || { type: default_period_for('salary-trend') };
+            const r = await frappe.call('employee_hub.employee_hub.api.get_salary_trend_chart', { period: period.type });
+            const $card = this.$main.find('[data-card-key="salary-trend"]').last();
+            $card.find('.hub-card-body').html(this.salary_trend_body_html(r.message));
+            this.init_salary_trend_chart($card);
+            return;
+        }
+
+        if (meta.kind === 'chart-task-donut') {
+            $row.append(this.render_task_donut_section({ labels: [] }));
+            const period = this.cardPeriods['task-donut'] || { type: default_period_for('task-donut') };
+            const r = await frappe.call('employee_hub.employee_hub.api.get_task_status_chart', { period: period.type });
+            const $card = this.$main.find('[data-card-key="task-donut"]').last();
+            $card.find('.hub-card-body').html(this.task_donut_body_html(r.message));
+            this.init_task_donut_chart($card);
+            return;
+        }
+
+        if (meta.kind === 'static-quick-actions') {
+            $row.append(`
+                <div class="hub-card" data-card-key="quick-actions" data-category="list">
+                    <div class="hub-card-header"><h4>Quick Actions</h4></div>
+                    <div class="hub-card-body">
+                        <div class="hub-quick-actions">
+                            <button class="hub-qa-btn hub-qa-blue" data-action="apply-leave">✓ Apply for Leave</button>
+                            <button class="hub-qa-btn hub-qa-cyan" data-action="log-timesheet">🕐 Log Timesheet</button>
+                            <button class="hub-qa-btn hub-qa-orange" data-action="view-payslip">💰 View Payslip</button>
+                            <button class="hub-qa-btn hub-qa-pink" data-action="raise-request">✎ Raise Request</button>
+                        </div>
+                    </div>
+                </div>`);
+            return;
+        }
+
+        if (meta.kind === 'static-documents-info') {
+            $row.append(`
+                <div class="hub-card" data-card-key="documents-info" data-category="list">
+                    <div class="hub-card-header"><h4>Documents</h4></div>
+                    <div class="hub-card-body">
+                        <p class="text-muted hub-empty">Document tracking (Visa, Passport, Emirates ID, etc.) isn't wired up yet.
+                        For now you can view attachments on your Employee record.</p>
+                        <a class="hub-card-link" data-route-doctype="employee-form">Open My Employee Record &rarr;</a>
+                    </div>
+                </div>`);
+            return;
+        }
+
+        if (meta.kind === 'leave-balance') {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_leave_balance_card');
+            $row.append(this.render_leave_balance_card(r.message.leave_balance));
+            return;
+        }
+
+        if (meta.kind === 'birthdays') {
+            const r = await frappe.call('employee_hub.employee_hub.api.get_birthdays_card');
+            const birthdays = r.message.birthdays;
+            $row.append(`<div class="hub-card" data-card-key="birthdays" data-category="list">
+                <div class="hub-card-header"><h4>Upcoming Birthdays</h4></div>
+                <div class="hub-card-body">
+                ${
+                    birthdays.length
+                        ? birthdays
+                              .map(
+                                  (b) => `
+                    <div class="hub-list-row">
+                        ${
+                            b.image
+                                ? `<img class="hub-avatar-sm" src="${b.image}">`
+                                : `<div class="hub-avatar-sm hub-avatar-initials">${this.get_initials(b.employee_name)}</div>`
+                        }
+                        <div>
+                            <div class="hub-list-title">${frappe.utils.escape_html(b.employee_name)}</div>
+                            <div class="hub-list-sub">${frappe.datetime.str_to_user(b.next_birthday)}</div>
+                        </div>
+                    </div>`
+                              )
+                              .join('')
+                        : '<p class="text-muted hub-empty">No birthdays in the next 30 days.</p>'
+                }
+                </div>
+            </div>`);
+            return;
+        }
+    }
+
     enter_customize_mode() {
         this.customizeMode = true;
         this.pendingLayout = JSON.parse(JSON.stringify(this.layoutState.items));
@@ -211,6 +442,7 @@ class EmployeeHub {
         this.refresh_customize_controls();
         this.apply_layout_to_dom();
         this.render_customize_affordances();
+        this.init_sortable();
     }
 
     // `discard` = true also reverts pendingLayout back to last-saved state
@@ -226,6 +458,7 @@ class EmployeeHub {
         this.refresh_customize_controls();
         this.apply_layout_to_dom();
         this.render_customize_affordances();
+        this.destroy_sortable();
     }
 
     mark_dirty() {
@@ -254,6 +487,78 @@ class EmployeeHub {
         this.exit_customize_mode(false);
     }
 
+    // Builds and shows the Move-To dropdown for a single card — lists every
+    // tab from the CURRENT (personal/effective) layout except the one this
+    // card is already in, per spec. Hidden tabs are still offered (moving a
+    // card to a currently-hidden tab is a reasonable thing to want to do —
+    // it'll just not be visible until that tab is un-hidden).
+    open_move_to_menu($card) {
+        this.$container.find('.hub-move-to-menu').remove();
+
+        const cardKey = $card.attr('data-card-key');
+        const otherTabs = this.ordered_visible_tabs()
+            .concat(HUB_TABS.filter((t) => !this.ordered_visible_tabs().some((v) => v.key === t.key)))
+            .filter((t) => t.key !== this.activeTab);
+
+        const $menu = $(`
+            <div class="hub-move-to-menu">
+                ${otherTabs.map((t) => `<div class="hub-move-to-option" data-tab="${t.key}">${frappe.utils.escape_html(t.label)}</div>`).join('')}
+            </div>`);
+
+        $card.css('position', 'relative').append($menu);
+
+        this.$container.off('click.moveToOption').on('click.moveToOption', '.hub-move-to-option', (e) => {
+            const targetTab = $(e.currentTarget).attr('data-tab');
+            this.move_card_to_tab(cardKey, targetTab);
+            $menu.remove();
+        });
+
+        // Close on any click outside the menu itself.
+        setTimeout(() => {
+            $(document)
+                .off('click.moveToOutside')
+                .on('click.moveToOutside', (e) => {
+                    if (!$(e.target).closest('.hub-move-to-menu, .hub-move-to-icon').length) {
+                        $menu.remove();
+                    }
+                });
+        }, 0);
+    }
+
+    move_card_to_tab(cardKey, targetTab) {
+        const item = this.pendingLayout.find(
+            (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === cardKey
+        );
+        if (!item) return;
+
+        const alreadyThere = this.pendingLayout.find(
+            (i) => i.scope === 'Card' && i.tab === targetTab && i.card_key === cardKey
+        );
+        if (alreadyThere) {
+            frappe.msgprint(__('This card is already on that tab — pick a different one.'));
+            return;
+        }
+
+        const maxSeq = Math.max(
+            0,
+            ...this.pendingLayout
+                .filter((i) => i.scope === 'Card' && i.tab === targetTab)
+                .map((i) => i.sequence || 0)
+        );
+        item.tab = targetTab;
+        item.sequence = maxSeq + 1;
+
+        this.mark_dirty();
+
+        // The card no longer belongs on the currently-viewed tab — remove
+        // it from view with a quick fade rather than an abrupt disappear.
+        const $card = this.$main.find(`[data-card-key="${cardKey}"]`);
+        $card.css('transition', 'opacity 0.15s ease').css('opacity', '0');
+        setTimeout(() => $card.remove(), 150);
+
+        frappe.show_alert({ message: __('Will move to {0} on Save', [(HUB_TABS.find((t) => t.key === targetTab) || {}).label || targetTab]), indicator: 'blue' });
+    }
+
     // Adds/removes the eye + drag-handle overlay (with text labels above
     // them, per spec) on every visible-or-dimmed tab pill and card, and
     // toggles `draggable` — only called while entering/updating/exiting
@@ -269,7 +574,7 @@ class EmployeeHub {
             if (i.scope === 'Card') cardMap[`${i.tab}|${i.card_key}`] = i;
         });
 
-        const overlay = (isHidden) => `
+        const tabOverlay = (isHidden) => `
             <div class="hub-customize-overlay">
                 <span class="hub-eye-icon" title="${isHidden ? 'Show' : 'Hide'}">${
             isHidden ? this.eye_off_icon_svg() : this.eye_icon_svg()
@@ -277,17 +582,34 @@ class EmployeeHub {
                 <span class="hub-drag-handle" title="Drag to reorder">${this.drag_icon_svg()}</span>
             </div>`;
 
+        const cardOverlay = (isHidden) => `
+            <div class="hub-customize-overlay">
+                <span class="hub-eye-icon" title="${isHidden ? 'Show' : 'Hide'}">${
+            isHidden ? this.eye_off_icon_svg() : this.eye_icon_svg()
+        }</span>
+                <span class="hub-drag-handle" title="Drag to reorder">${this.drag_icon_svg()}</span>
+                <span class="hub-move-to-icon" title="Move to a different tab">${this.move_to_icon_svg()}</span>
+            </div>`;
+
         this.$container.find('.hub-tab').each((_, el) => {
             const key = $(el).attr('data-key');
             const isHidden = !!(tabMap[key] && tabMap[key].is_hidden);
-            $(el).append(overlay(isHidden));
+            $(el).append(tabOverlay(isHidden));
         });
 
         this.$main.find('[data-card-key]').each((_, el) => {
             const key = $(el).attr('data-card-key');
             const item = cardMap[`${this.activeTab}|${key}`];
-            $(el).append(overlay(!!(item && item.is_hidden)));
+            $(el).append(cardOverlay(!!(item && item.is_hidden)));
         });
+    }
+
+    move_to_icon_svg() {
+        // A double-headed arrow, per feedback — visible in any theme since
+        // it inherits `currentColor` the same way the other two icons do.
+        return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 8l-4 4 4 4M3 12h18M17 8l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
     }
 
     eye_icon_svg() {
@@ -323,131 +645,109 @@ class EmployeeHub {
             if (item) item.sequence = idx + 1;
         });
 
-        const parents = new Set();
-        this.$main.find('[data-card-key]').each((_, el) => parents.add(el.parentElement));
-        parents.forEach((parent) => {
-            $(parent)
-                .find('> [data-card-key]')
-                .each((idx, el) => {
-                    const key = $(el).attr('data-card-key');
-                    const item = this.pendingLayout.find(
-                        (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === key
-                    );
-                    if (item) item.sequence = idx + 1;
-                });
+        // Recompute per-category (stat / chart / list) across the ENTIRE
+        // tab, in document order — not per DOM parent. Cards of the same
+        // category can now live in different .hub-grid rows after a
+        // cross-row move, so sequence has to reflect their true position
+        // across the whole category, not just within whichever row they
+        // happen to currently sit in.
+        const categories = new Set();
+        this.$main.find('[data-card-key]').each((_, el) => categories.add($(el).attr('data-category')));
+        categories.forEach((category) => {
+            this.$main.find(`[data-card-key][data-category="${category}"]`).each((idx, el) => {
+                const key = $(el).attr('data-card-key');
+                const item = this.pendingLayout.find(
+                    (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === key
+                );
+                if (item) item.sequence = idx + 1;
+            });
         });
     }
 
-    // Smooth pointer-based drag: the dragged element is lifted visually
-    // (CSS transform + subtle scale/shadow) and follows the pointer
-    // directly, while siblings only actually reorder in the DOM once the
-    // pointer crosses their midpoint — giving continuous, immediate visual
-    // feedback instead of native drag-and-drop's default jump-and-snap feel.
-    start_pointer_drag(el, startEvent) {
-        const $el = $(el);
-        const parent = el.parentElement;
-        const isHorizontal = parent.classList.contains('hub-tabbar');
-        const startPos = isHorizontal ? startEvent.clientX : startEvent.clientY;
+    // Frappe bundles SortableJS already (it powers the Kanban board), so
+    // this normally resolves instantly — the dynamic-load fallback only
+    // matters if some version/build doesn't happen to expose it globally.
+    load_sortable() {
+        if (window.Sortable) return Promise.resolve(window.Sortable);
+        if (this._sortableLoadPromise) return this._sortableLoadPromise;
+        this._sortableLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js';
+            script.onload = () => resolve(window.Sortable);
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+        return this._sortableLoadPromise;
+    }
 
-        $el.addClass('hub-dragging');
-        document.body.style.userSelect = 'none';
-
-        let latestEvent = null;
-        let rafScheduled = false;
-
-        const processMove = () => {
-            rafScheduled = false;
-            const e = latestEvent;
-            if (!e) return;
-
-            // Nearest-sibling-by-center-distance instead of a single-axis
-            // range check — this stays correct even if the group wraps
-            // onto multiple rows (e.g. the tab bar wrapping at an
-            // in-between viewport width), since it's comparing full 2D
-            // position rather than assuming a single row/column.
-            const siblings = Array.from(parent.children).filter((c) => c !== el);
-            if (!siblings.length) return;
-
-            let nearest = null;
-            let nearestDist = Infinity;
-            siblings.forEach((sib) => {
-                const rect = sib.getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-                if (dist < nearestDist) {
-                    nearestDist = dist;
-                    nearest = sib;
-                }
-            });
-            if (!nearest) return;
-
-            const rect = nearest.getBoundingClientRect();
-            const before = isHorizontal
-                ? e.clientX < rect.left + rect.width / 2
-                : e.clientY < rect.top + rect.height / 2;
-
-            const willMove = before ? el.nextSibling !== nearest : nearest.nextSibling !== el;
-            if (!willMove) return;
-
-            // FLIP: capture every sibling's current position, do the actual
-            // reorder, then for anything that visually jumped, instantly
-            // snap it back (via transform) to where it just was and let a
-            // CSS transition animate it to its real new position on the
-            // next frame — this is what makes siblings glide out of the
-            // way instead of teleporting.
-            const before_rects = new Map();
-            siblings.forEach((sib) => before_rects.set(sib, sib.getBoundingClientRect()));
-
-            if (before) {
-                parent.insertBefore(el, nearest);
-            } else {
-                parent.insertBefore(el, nearest.nextSibling);
+    // Tears down every active Sortable instance — called before creating
+    // new ones (tab switch, re-entering Customize Mode) and on exit, so
+    // stale instances never pile up or fight over the same DOM.
+    destroy_sortable() {
+        (this._sortableInstances || []).forEach((s) => {
+            try {
+                s.destroy();
+            } catch (e) {
+                /* already gone */
             }
+        });
+        this._sortableInstances = [];
+    }
 
-            siblings.forEach((sib) => {
-                const old = before_rects.get(sib);
-                const now = sib.getBoundingClientRect();
-                const dx = old.left - now.left;
-                const dy = old.top - now.top;
-                if (!dx && !dy) return;
-                sib.style.transition = 'none';
-                sib.style.transform = `translate(${dx}px, ${dy}px)`;
-                requestAnimationFrame(() => {
-                    sib.style.transition = 'transform 0.18s ease';
-                    sib.style.transform = '';
-                });
-            });
-        };
+    async init_sortable() {
+        this.destroy_sortable();
+        if (!this.customizeMode) return;
 
-        const onMove = (e) => {
-            // The dragged element's own tracking stays perfectly responsive
-            // (updated every single event, no throttling) — only the
-            // expensive nearest-sibling search + potential DOM reorder is
-            // batched to once per frame.
-            const pos = isHorizontal ? e.clientX : e.clientY;
-            const delta = pos - startPos;
-            $el.css('transform', isHorizontal ? `translateX(${delta}px)` : `translateY(${delta}px)`);
+        const Sortable = await this.load_sortable();
+        if (!this.customizeMode) return; // customize mode may have been exited while loading
 
-            latestEvent = e;
-            if (!rafScheduled) {
-                rafScheduled = true;
-                requestAnimationFrame(processMove);
-            }
-        };
-
-        const onUp = () => {
-            document.removeEventListener('pointermove', onMove);
-            document.removeEventListener('pointerup', onUp);
-            document.body.style.userSelect = '';
-            $el.removeClass('hub-dragging').css('transform', '');
+        const onEnd = () => {
             this.recompute_sequences_from_dom();
             this.mark_dirty();
         };
 
-        document.addEventListener('pointermove', onMove);
-        document.addEventListener('pointerup', onUp);
+        // Tab bar — one group, simple reorder.
+        const $tabbar = this.$container.find('.hub-tabbar');
+        if ($tabbar.length) {
+            this._sortableInstances.push(
+                new Sortable($tabbar[0], {
+                    animation: 180,
+                    handle: '.hub-drag-handle',
+                    ghostClass: 'hub-sortable-ghost',
+                    chosenClass: 'hub-sortable-chosen',
+                    dragClass: 'hub-sortable-drag',
+                    onEnd,
+                })
+            );
+        }
+
+        // Each .hub-grid row becomes its own Sortable instance, but rows
+        // sharing the same category (read from their first card's
+        // data-category) share the same `group` name — that's what lets
+        // items move freely BETWEEN rows of the same kind (e.g. one chart
+        // swapping with another chart in a completely different row),
+        // not just within their own row, while still refusing to accept a
+        // card from a different category at all.
+        this.$main.find('.hub-grid').each((_, row) => {
+            const $row = $(row);
+            const $firstCard = $row.find('[data-card-key]').first();
+            if (!$firstCard.length) return;
+            const category = $firstCard.attr('data-category');
+
+            this._sortableInstances.push(
+                new Sortable(row, {
+                    group: `hub-category-${category}`,
+                    animation: 180,
+                    handle: '.hub-drag-handle',
+                    ghostClass: 'hub-sortable-ghost',
+                    chosenClass: 'hub-sortable-chosen',
+                    dragClass: 'hub-sortable-drag',
+                    onEnd,
+                })
+            );
+        });
     }
+
 
     // -----------------------------------------------------------------
     render_shell() {
@@ -553,18 +853,19 @@ class EmployeeHub {
             this.render_customize_affordances();
         });
 
-        // Pointer-events-based drag reordering (not native HTML5 drag-and-
-        // drop, which has a well-known janky default ghost-image/drag feel
-        // browsers can't fully suppress). This gives full control over the
-        // motion via a CSS transform on the dragged element, and only
-        // triggers a real DOM reorder once the pointer crosses a sibling's
-        // midpoint — constrained to siblings sharing the same parent (same
-        // like-kind group, whether a .hub-grid row or the tabbar itself).
-        this.$container.on('pointerdown', '.hub-drag-handle', (e) => {
-            e.preventDefault();
-            const $el = $(e.currentTarget).closest('[data-card-key], .hub-tab');
-            this.start_pointer_drag($el[0], e.originalEvent);
+        // Move-To icon — opens a small dropdown of other tabs; picking one
+        // moves this card there in the working copy (nothing hits the
+        // server until Save). The card disappears from the current tab's
+        // view immediately since it no longer belongs here.
+        this.$container.on('click', '.hub-move-to-icon', (e) => {
+            e.stopPropagation();
+            const $card = $(e.currentTarget).closest('[data-card-key]');
+            this.open_move_to_menu($card);
         });
+
+        // Reordering itself is handled by SortableJS (see init_sortable) —
+        // it's initialized/torn down whenever Customize Mode toggles or
+        // the active tab changes, not wired up here.
         // ---- Per-card mini filter dropdown ----
         this.$container.on('click', '.hub-mini-filter', function (e) {
             e.stopPropagation();
@@ -851,8 +1152,10 @@ class EmployeeHub {
             }
             this.render_dashboard_tab(this.tabCache.dashboard);
             this.apply_layout_to_dom();
+            await this.inject_foreign_cards();
             this.refresh_customize_controls();
             this.render_customize_affordances();
+            this.init_sortable();
             return;
         }
 
@@ -870,8 +1173,10 @@ class EmployeeHub {
         else if (key === 'documents') this.render_documents_tab();
 
         this.apply_layout_to_dom();
+        await this.inject_foreign_cards();
         this.refresh_customize_controls();
         this.render_customize_affordances();
+        this.init_sortable();
     }
 
     // -----------------------------------------------------------------
@@ -1095,7 +1400,7 @@ class EmployeeHub {
     list_card(title, seeMoreKey, cardKey, records, filterable, total) {
         if (filterable === undefined) filterable = true;
         return `
-            <div class="hub-card" data-card-key="${cardKey}">
+            <div class="hub-card" data-card-key="${cardKey}" data-category="list">
                 <div class="hub-card-header">
                     <h4>${title}</h4>
                     <div class="hub-card-header-right">
@@ -1271,7 +1576,7 @@ class EmployeeHub {
     // the exact same card/chart instead of duplicated markup.
     render_salary_trend_section(salaryTrend) {
         return `
-            <div class="hub-card" data-card-key="salary-trend">
+            <div class="hub-card" data-card-key="salary-trend" data-category="list">
                 <div class="hub-card-header">
                     <h4>Net Pay Trend</h4>
                     <div class="hub-card-header-right">${this.render_mini_filter('salary-trend')}</div>
@@ -1309,7 +1614,7 @@ class EmployeeHub {
     // Shared between Dashboard and the Tasks & Timesheets tab.
     render_task_donut_section(breakdown) {
         return `
-            <div class="hub-card" data-card-key="task-donut">
+            <div class="hub-card" data-card-key="task-donut" data-category="list">
                 <div class="hub-card-header">
                     <h4>Task Status Breakdown</h4>
                     <div class="hub-card-header-right">${this.render_mini_filter('task-donut')}</div>
@@ -1360,7 +1665,7 @@ class EmployeeHub {
 
         const $row = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
         const $attCard = $(`
-            <div class="hub-card" data-card-key="attendance-chart">
+            <div class="hub-card" data-card-key="attendance-chart" data-category="list">
                 <div class="hub-card-header">
                     <h4>Attendance Overview</h4>
                     <div class="hub-card-header-right">${this.render_mini_filter('attendance-chart')}</div>
@@ -1369,7 +1674,7 @@ class EmployeeHub {
             </div>`);
         $row.append($attCard);
         $row.append(`
-            <div class="hub-card" data-card-key="leave-pie">
+            <div class="hub-card" data-card-key="leave-pie" data-category="list">
                 <div class="hub-card-header"><h4>Leave Distribution</h4></div>
                 <div class="hub-card-body">
                 ${
@@ -1392,7 +1697,7 @@ class EmployeeHub {
 
         const $row2 = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
         $row2.append(`
-            <div class="hub-card" data-card-key="quick-actions">
+            <div class="hub-card" data-card-key="quick-actions" data-category="list">
                 <div class="hub-card-header"><h4>Quick Actions</h4></div>
                 <div class="hub-card-body">
                     <div class="hub-quick-actions">
@@ -1404,7 +1709,7 @@ class EmployeeHub {
                 </div>
             </div>`);
         $row2.append(`
-            <div class="hub-card" data-card-key="birthdays">
+            <div class="hub-card" data-card-key="birthdays" data-category="list">
                 <div class="hub-card-header"><h4>Upcoming Birthdays</h4></div>
                 <div class="hub-card-body">
                 ${
@@ -1413,7 +1718,11 @@ class EmployeeHub {
                               .map(
                                   (b) => `
                     <div class="hub-list-row">
-                        <img class="hub-avatar-sm" src="${b.image || '/assets/frappe/images/ui/avatar.png'}">
+                        ${
+                            b.image
+                                ? `<img class="hub-avatar-sm" src="${b.image}">`
+                                : `<div class="hub-avatar-sm hub-avatar-initials">${this.get_initials(b.employee_name)}</div>`
+                        }
                         <div>
                             <div class="hub-list-title">${frappe.utils.escape_html(b.employee_name)}</div>
                             <div class="hub-list-sub">${frappe.datetime.str_to_user(b.next_birthday)}</div>
@@ -1441,11 +1750,15 @@ class EmployeeHub {
                      data-labels='${JSON.stringify(chart.labels)}'
                      data-present='${JSON.stringify(chart.present)}'
                      data-absent='${JSON.stringify(chart.absent)}'
-                     data-half='${JSON.stringify(chart.half_day)}'></div>
+                     data-half='${JSON.stringify(chart.half_day)}'
+                     data-leave='${JSON.stringify(chart.on_leave)}'
+                     data-wfh='${JSON.stringify(chart.work_from_home)}'></div>
                 <div class="hub-legend">
                     <span><i class="hub-dot" style="background:#2ecc71"></i>Present</span>
                     <span><i class="hub-dot" style="background:#e74c3c"></i>Absent</span>
                     <span><i class="hub-dot" style="background:#f1c40f"></i>Half Day</span>
+                    <span><i class="hub-dot" style="background:#3498db"></i>On Leave</span>
+                    <span><i class="hub-dot" style="background:#9b59b6"></i>Work From Home</span>
                 </div>`;
     }
 
@@ -1473,11 +1786,13 @@ class EmployeeHub {
                     { name: 'Present', chartType: 'bar', values: JSON.parse($el.attr('data-present')) },
                     { name: 'Absent', chartType: 'bar', values: JSON.parse($el.attr('data-absent')) },
                     { name: 'Half Day', chartType: 'bar', values: JSON.parse($el.attr('data-half')) },
+                    { name: 'On Leave', chartType: 'bar', values: JSON.parse($el.attr('data-leave')) },
+                    { name: 'Work From Home', chartType: 'bar', values: JSON.parse($el.attr('data-wfh')) },
                 ],
             },
             type: 'bar',
             height: 220,
-            colors: ['#2ecc71', '#e74c3c', '#f1c40f'],
+            colors: ['#2ecc71', '#e74c3c', '#f1c40f', '#3498db', '#9b59b6'],
             axisOptions: { xIsSeries: true },
             hideLegend: 1,
             // The hover tooltip kept getting clipped no matter which CSS fix
@@ -1543,7 +1858,7 @@ class EmployeeHub {
         const html = cards
             .map(
                 (c) => `
-                <div class="hub-card hub-stat-card" data-card-key="${c.cardKey}">
+                <div class="hub-card hub-stat-card" data-card-key="${c.cardKey}" data-category="stat">
                     <div class="hub-stat-label">${c.label}</div>
                     <div class="hub-stat-value">${c.value}</div>
                     <div class="hub-stat-sub">${c.sub}</div>
@@ -1600,7 +1915,7 @@ class EmployeeHub {
                   })
                   .join('')
             : '<p class="text-muted hub-empty">No leave allocations found.</p>';
-        return `<div class="hub-card"><div class="hub-card-header"><h4>Leave Balance</h4></div><div class="hub-card-body">${rows}</div></div>`;
+        return `<div class="hub-card" data-card-key="leave-balance" data-category="list"><div class="hub-card-header"><h4>Leave Balance</h4></div><div class="hub-card-body">${rows}</div></div>`;
     }
 
     // -----------------------------------------------------------------
@@ -1655,7 +1970,7 @@ class EmployeeHub {
     render_documents_tab() {
         this.$main.empty();
         this.$main.append(`
-            <div class="hub-card" data-card-key="documents-info">
+            <div class="hub-card" data-card-key="documents-info" data-category="list">
                 <div class="hub-card-header"><h4>Documents</h4></div>
                 <div class="hub-card-body">
                     <p class="text-muted hub-empty">Document tracking (Visa, Passport, Emirates ID, etc.) isn't wired up yet.
