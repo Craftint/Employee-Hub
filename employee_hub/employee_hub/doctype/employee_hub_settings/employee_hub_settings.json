@@ -7,27 +7,50 @@
  "engine": "InnoDB",
  "fields": [
   {
+   "fieldname": "enable_employee_hub_access",
+   "fieldtype": "Check",
+   "label": "Enable Employee Hub Access",
+   "default": "1",
+   "description": "Uncheck this to fully turn off Employee Hub \u2014 no login redirect, no sidebar link, normal ERPNext for everyone."
+  },
+  {
+   "fieldname": "column_break_switches",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "allow_personal_customization",
    "fieldtype": "Check",
    "label": "Allow Employees to Customize Their Own Layout",
    "default": "1",
-   "description": "Uncheck this to stop employees from customizing their own view."
+   "description": "Uncheck this to stop employees from customizing their own view.",
+   "depends_on": "eval:doc.enable_employee_hub_access"
+  },
+  {
+   "fieldname": "enable_role_profile_layouts",
+   "fieldtype": "Check",
+   "label": "Enable Role Profile Based Layouts",
+   "default": "0",
+   "depends_on": "eval:doc.enable_employee_hub_access",
+   "description": "Turn this on once Role Profile layouts are set up, so groups of employees can share a layout."
   },
   {
    "fieldname": "section_break_layout",
    "fieldtype": "Section Break",
-   "label": "Global Default Layout"
+   "label": "Global Default Layout",
+   "depends_on": "eval:doc.enable_employee_hub_access"
   },
   {
    "fieldname": "layout_help",
    "fieldtype": "HTML",
-   "options": "<p class='text-muted' style='margin-bottom:8px;'>This is what every employee sees by default. Edit the rows below to change what's shown and in what order.</p>"
+   "options": "<p class='text-muted' style='margin-bottom:8px;'>This is what every employee sees by default. Edit the rows below to change what's shown and in what order.</p>",
+   "depends_on": "eval:doc.enable_employee_hub_access"
   },
   {
    "fieldname": "global_default_layout",
    "fieldtype": "Table",
    "label": "Layout Items",
-   "options": "Employee Hub Layout Item"
+   "options": "Employee Hub Layout Item",
+   "depends_on": "eval:doc.enable_employee_hub_access"
   }
  ],
  "permissions": [

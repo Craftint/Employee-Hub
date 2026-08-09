@@ -36,7 +36,7 @@ frappe.after_ajax(() => {
 (function () {
     function build_link() {
         const $link = $(
-            '<div class="employee-hub-pinned-link" role="button" tabindex="0">' +
+            '<div class="employee-hub-pinned-link" role="button" tabindex="0" title="Employee Hub">' +
                 '<span class="employee-hub-pinned-icon">🏠</span>' +
                 '<span class="employee-hub-pinned-label">Employee Hub</span>' +
                 '</div>'

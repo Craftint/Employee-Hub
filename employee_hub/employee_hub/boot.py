@@ -3,15 +3,27 @@ import frappe
 REDIRECT_CACHE_PREFIX = "employee_hub_redirect_once:"
 
 
+def _employee_hub_enabled():
+    """The master switch in Employee Hub Settings. Defaults to enabled if
+    the setting can't be read for any reason (e.g. mid-migration) — fails
+    open rather than silently breaking existing behavior for everyone."""
+    try:
+        return bool(frappe.db.get_single_value("Employee Hub Settings", "enable_employee_hub_access"))
+    except Exception:
+        return True
+
+
 def boot_session(bootinfo):
     """Runs on every page load, including plain reloads. Flags whether the
-    current user has a linked Employee record, and — the important part —
+    current user has a linked Employee record AND the master switch is on
+    — this same flag is what employee_hub_boot.js checks before showing
+    the sidebar link, so gating it here covers that automatically. Also
     checks for a one-shot redirect flag set by on_login (below) for THIS
     user. If present, it's consumed and deleted immediately, so it can only
     ever trigger a redirect on the single page load right after a fresh
     login, never on any reload after that."""
     employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
-    bootinfo.employee_hub_home = bool(employee)
+    bootinfo.employee_hub_home = bool(employee) and _employee_hub_enabled()
 
     cache_key = REDIRECT_CACHE_PREFIX + frappe.session.user
     if frappe.cache().get_value(cache_key):
@@ -36,6 +48,8 @@ def on_login(login_manager):
     read — so it's a true one-shot per login.
     """
     user = login_manager.user
+    if not _employee_hub_enabled():
+        return
     if frappe.db.exists("Employee", {"user_id": user}):
         cache_key = REDIRECT_CACHE_PREFIX + user
         frappe.cache().set_value(cache_key, True, expires_in_sec=30)
