@@ -979,7 +979,7 @@ html[data-theme="dark"] .employee-hub-pinned-label {
     background: rgba(255, 255, 255, 0.2);
     color: #fff;
 }
-.hub-move-to-icon {
+.hub-move-to-icon, .hub-duplicate-icon {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -989,7 +989,7 @@ html[data-theme="dark"] .employee-hub-pinned-label {
     color: #6b6b80;
     cursor: pointer;
 }
-.hub-move-to-icon:hover {
+.hub-move-to-icon:hover, .hub-duplicate-icon:hover {
     background: rgba(108, 92, 231, 0.1);
     color: var(--hub-purple);
 }
@@ -1019,7 +1019,7 @@ html[data-theme="dark"] .employee-hub-pinned-label {
     background: var(--hub-bg);
     color: var(--hub-purple);
 }
-html[data-theme="dark"] .hub-move-to-icon {
+html[data-theme="dark"] .hub-move-to-icon, html[data-theme="dark"] .hub-duplicate-icon {
     color: #d0d0d3;
 }
 html[data-theme="dark"] .hub-move-to-menu {

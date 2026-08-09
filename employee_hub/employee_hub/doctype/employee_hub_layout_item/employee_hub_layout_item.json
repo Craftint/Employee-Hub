@@ -35,7 +35,8 @@
    "fieldtype": "Data",
    "label": "Card Key",
    "in_list_view": 1,
-   "description": "Which card this is. Leave empty if you picked Tab above."
+   "description": "Which card this is. Leave empty if you picked Tab above.",
+   "mandatory_depends_on": "eval:doc.scope=='Card'"
   },
   {
    "fieldname": "is_hidden",

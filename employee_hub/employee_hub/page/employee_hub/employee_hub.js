@@ -217,7 +217,16 @@ class EmployeeHub {
             const $el = $(el);
             const key = $el.attr('data-card-key');
             const item = cardMap[`${this.activeTab}|${key}`];
-            if (!item) return;
+            if (!item) {
+                // No layout item ties this card to the current tab anymore
+                // — it's been moved elsewhere via Move To. The tab's own
+                // native render function still built it unconditionally
+                // (it doesn't know about the move), so it has to be
+                // stripped out here rather than left visible with
+                // controls that silently do nothing.
+                $el.remove();
+                return;
+            }
             $el.toggle(!item.is_hidden || this.customizeMode);
             $el.toggleClass('hub-item-hidden', !!item.is_hidden);
             $el.attr('data-sequence', item.sequence);
@@ -253,16 +262,32 @@ class EmployeeHub {
         );
         if (!missing.length) return;
 
-        let $listRow = this.$main.find('.hub-grid').filter((_, row) => {
-            const $first = $(row).find('[data-card-key]').first();
-            return $first.length && $first.attr('data-category') === 'list';
-        }).last();
-        if (!$listRow.length) {
-            $listRow = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
-        }
+        const findOrCreateRow = (category, cols, prepend) => {
+            let $row = this.$main
+                .find('.hub-grid')
+                .filter((_, row) => {
+                    const $first = $(row).find('[data-card-key]').first();
+                    return $first.length && $first.attr('data-category') === category;
+                })
+                .last();
+            if (!$row.length) {
+                $row = $(`<div class="hub-grid" data-cols="${cols}"></div>`);
+                if (prepend) {
+                    this.$main.prepend($row);
+                } else {
+                    this.$main.append($row);
+                }
+            }
+            return $row;
+        };
 
         for (const key of missing) {
-            await this.inject_one_card(key, $listRow);
+            const meta = CARD_REGISTRY[key];
+            // Stat cards get their own row, placed first (matching where
+            // they always sit on Dashboard) — everything else (charts,
+            // lists, quick actions, etc.) shares the general content row.
+            const $row = meta && meta.kind === 'stat' ? findOrCreateRow('stat', 5, true) : findOrCreateRow('list', 2, false);
+            await this.inject_one_card(key, $row);
         }
 
         this.apply_layout_to_dom();
@@ -292,7 +317,7 @@ class EmployeeHub {
                     ? `<div class="hub-progress"><div class="hub-progress-bar" style="width:${s.percent}%"></div></div>`
                     : '';
             $row.append(`
-                <div class="hub-card hub-stat-card" data-card-key="${key}" data-category="list">
+                <div class="hub-card hub-stat-card" data-card-key="${key}" data-category="stat">
                     <div class="hub-stat-label">${s.label}</div>
                     <div class="hub-stat-value">${s.value}</div>
                     <div class="hub-stat-sub">${s.sub}</div>
@@ -493,6 +518,14 @@ class EmployeeHub {
     // card to a currently-hidden tab is a reasonable thing to want to do —
     // it'll just not be visible until that tab is un-hidden).
     open_move_to_menu($card) {
+        this.open_tab_picker_menu($card, 'move');
+    }
+
+    open_duplicate_menu($card) {
+        this.open_tab_picker_menu($card, 'duplicate');
+    }
+
+    open_tab_picker_menu($card, action) {
         this.$container.find('.hub-move-to-menu').remove();
 
         const cardKey = $card.attr('data-card-key');
@@ -509,7 +542,11 @@ class EmployeeHub {
 
         this.$container.off('click.moveToOption').on('click.moveToOption', '.hub-move-to-option', (e) => {
             const targetTab = $(e.currentTarget).attr('data-tab');
-            this.move_card_to_tab(cardKey, targetTab);
+            if (action === 'duplicate') {
+                this.duplicate_card_to_tab(cardKey, targetTab);
+            } else {
+                this.move_card_to_tab(cardKey, targetTab);
+            }
             $menu.remove();
         });
 
@@ -518,7 +555,7 @@ class EmployeeHub {
             $(document)
                 .off('click.moveToOutside')
                 .on('click.moveToOutside', (e) => {
-                    if (!$(e.target).closest('.hub-move-to-menu, .hub-move-to-icon').length) {
+                    if (!$(e.target).closest('.hub-move-to-menu, .hub-move-to-icon, .hub-duplicate-icon').length) {
                         $menu.remove();
                     }
                 });
@@ -530,6 +567,16 @@ class EmployeeHub {
             (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === cardKey
         );
         if (!item) return;
+
+        const remainingInSource = this.pendingLayout.filter(
+            (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key !== cardKey
+        );
+        if (!remainingInSource.length) {
+            frappe.msgprint(
+                __('A tab needs at least one card. Either hide the whole tab instead, or add another card here first.')
+            );
+            return;
+        }
 
         const alreadyThere = this.pendingLayout.find(
             (i) => i.scope === 'Card' && i.tab === targetTab && i.card_key === cardKey
@@ -557,6 +604,43 @@ class EmployeeHub {
         setTimeout(() => $card.remove(), 150);
 
         frappe.show_alert({ message: __('Will move to {0} on Save', [(HUB_TABS.find((t) => t.key === targetTab) || {}).label || targetTab]), indicator: 'blue' });
+    }
+
+    duplicate_card_to_tab(cardKey, targetTab) {
+        // The original stays exactly as-is — same tab, same position — per
+        // spec. Only a new, independent instance is created on the target.
+        const original = this.pendingLayout.find(
+            (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key === cardKey
+        );
+        if (!original) return;
+
+        const alreadyThere = this.pendingLayout.find(
+            (i) => i.scope === 'Card' && i.tab === targetTab && i.card_key === cardKey
+        );
+        if (alreadyThere) {
+            frappe.msgprint(__('This card already exists on that tab — pick a different one.'));
+            return;
+        }
+
+        const maxSeq = Math.max(
+            0,
+            ...this.pendingLayout
+                .filter((i) => i.scope === 'Card' && i.tab === targetTab)
+                .map((i) => i.sequence || 0)
+        );
+        this.pendingLayout.push({
+            scope: 'Card',
+            tab: targetTab,
+            card_key: cardKey,
+            is_hidden: 0,
+            sequence: maxSeq + 1,
+        });
+
+        this.mark_dirty();
+        frappe.show_alert({
+            message: __('Will also appear on {0} on Save', [(HUB_TABS.find((t) => t.key === targetTab) || {}).label || targetTab]),
+            indicator: 'blue',
+        });
     }
 
     // Adds/removes the eye + drag-handle overlay (with text labels above
@@ -588,6 +672,7 @@ class EmployeeHub {
             isHidden ? this.eye_off_icon_svg() : this.eye_icon_svg()
         }</span>
                 <span class="hub-drag-handle" title="Drag to reorder">${this.drag_icon_svg()}</span>
+                <span class="hub-duplicate-icon" title="Duplicate to Another Tab">${this.duplicate_icon_svg()}</span>
                 <span class="hub-move-to-icon" title="Move to a different tab">${this.move_to_icon_svg()}</span>
             </div>`;
 
@@ -609,6 +694,13 @@ class EmployeeHub {
         // it inherits `currentColor` the same way the other two icons do.
         return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M7 8l-4 4 4 4M3 12h18M17 8l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+    }
+
+    duplicate_icon_svg() {
+        return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.8"/>
         </svg>`;
     }
 
@@ -861,6 +953,14 @@ class EmployeeHub {
             e.stopPropagation();
             const $card = $(e.currentTarget).closest('[data-card-key]');
             this.open_move_to_menu($card);
+        });
+
+        // Duplicate icon — same dropdown, but the original stays exactly
+        // where it is; only a new copy is added to the picked tab.
+        this.$container.on('click', '.hub-duplicate-icon', (e) => {
+            e.stopPropagation();
+            const $card = $(e.currentTarget).closest('[data-card-key]');
+            this.open_duplicate_menu($card);
         });
 
         // Reordering itself is handled by SortableJS (see init_sortable) —
@@ -1591,7 +1691,7 @@ class EmployeeHub {
                          data-labels='${JSON.stringify(salaryTrend.labels)}'
                          data-values='${JSON.stringify(salaryTrend.values)}'></div>`;
         }
-        return '<p class="text-muted hub-empty">No Salary Slips in this period — try a wider filter (e.g. Last Year).</p>';
+        return '<p class="text-muted hub-empty">No Salary Slips in this period — try a wider filter (e.g. This Year).</p>';
     }
 
     init_salary_trend_chart($scope) {
@@ -1637,7 +1737,7 @@ class EmployeeHub {
                         '#e84393',
                     ])}`;
         }
-        return '<p class="text-muted hub-empty">No tasks in this period — try a wider filter (e.g. Last Year).</p>';
+        return '<p class="text-muted hub-empty">No tasks in this period — try a wider filter (e.g. This Year).</p>';
     }
 
     init_task_donut_chart($scope) {
