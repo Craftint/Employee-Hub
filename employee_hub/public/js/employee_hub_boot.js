@@ -74,8 +74,47 @@ frappe.after_ajax(() => {
         }
         if (!container) return;
 
-        const $link = build_link();
-        container.insertBefore($link[0], container.firstChild);
+        // Shallow-clone a real native sidebar item (its tag + every class
+        // and attribute it has, but none of its children) and put our own
+        // icon/label inside that shell. Since the wrapper element itself
+        // carries the exact same classes as every other item in this list,
+        // it inherits identical font-size/weight/spacing automatically —
+        // no guessing which CSS properties to copy, which is what kept
+        // producing a mismatch before.
+        const nativeItemSelectors = ['.sidebar-item-container', '.standard-sidebar-item', 'a.sidebar-link', '.sidebar-item'];
+        let nativeSample = null;
+        for (const sel of nativeItemSelectors) {
+            const el = container.querySelector(sel);
+            if (el) {
+                nativeSample = el;
+                break;
+            }
+        }
+
+        let linkEl;
+        if (nativeSample) {
+            linkEl = nativeSample.cloneNode(false);
+            linkEl.removeAttribute('href');
+            linkEl.removeAttribute('id');
+            linkEl.innerHTML =
+                '<span class="employee-hub-pinned-icon">🏠</span><span class="employee-hub-pinned-label">Employee Hub</span>';
+        } else {
+            linkEl = build_link()[0];
+        }
+        linkEl.classList.add('employee-hub-pinned-link');
+        linkEl.setAttribute('role', 'button');
+        linkEl.setAttribute('tabindex', '0');
+        linkEl.setAttribute('title', 'Employee Hub');
+
+        const $link = $(linkEl);
+        $link.on('click keypress', (e) => {
+            if (e.type === 'keypress' && e.key !== 'Enter') return;
+            e.preventDefault();
+            e.stopPropagation();
+            frappe.set_route('employee-hub');
+        });
+
+        container.insertBefore(linkEl, container.firstChild);
     }
 
     frappe.after_ajax(() => {
