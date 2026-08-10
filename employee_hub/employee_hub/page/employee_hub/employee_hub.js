@@ -442,13 +442,11 @@ class EmployeeHub {
                     <div class="hub-list-row hub-birthday-row">
                         ${
                             b.image
-                                ? `<img class="hub-avatar-sm" src="${b.image}">`
-                                : `<div class="hub-avatar-sm hub-avatar-initials">${this.get_initials(b.employee_name)}</div>`
+                                ? `<img class="hub-avatar-sm hub-birthday-avatar" src="${b.image}">`
+                                : `<div class="hub-avatar-sm hub-avatar-initials hub-birthday-avatar" style="background:${this.avatar_color(b.employee_name)}">${this.get_initials(b.employee_name)}</div>`
                         }
-                        <div>
-                            <div class="hub-list-title">${frappe.utils.escape_html(b.employee_name)}</div>
-                            <div class="hub-list-sub">${frappe.datetime.str_to_user(b.next_birthday)}</div>
-                        </div>
+                        <div class="hub-birthday-name">${frappe.utils.escape_html(b.employee_name)}</div>
+                        <div class="hub-birthday-date">${frappe.datetime.str_to_user(b.next_birthday)}</div>
                     </div>`
                               )
                               .join('') +
@@ -1578,6 +1576,19 @@ class EmployeeHub {
         return (first + second).toUpperCase();
     }
 
+    // A small palette, medium-saturation so white text stays readable
+    // against any of them regardless of light/dark theme — picked
+    // deterministically from the name (a simple hash) so the same person
+    // always gets the same color, not a different one on every reload.
+    avatar_color(name) {
+        const palette = ['#FF6B6B', '#4ECDC4', '#5B8DEF', '#F4A259', '#8E7DBE', '#43AA8B', '#EF6FA1', '#5FA8D3', '#F2994A', '#6FCF97'];
+        let hash = 0;
+        for (let i = 0; i < (name || '').length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return palette[Math.abs(hash) % palette.length];
+    }
+
     // ToDo descriptions come from a rich-text field and contain raw HTML
     // (e.g. "<div class=...><p><strong>...") — strip tags down to plain text.
     strip_html(html) {
@@ -1823,13 +1834,11 @@ class EmployeeHub {
                     <div class="hub-list-row hub-birthday-row">
                         ${
                             b.image
-                                ? `<img class="hub-avatar-sm" src="${b.image}">`
-                                : `<div class="hub-avatar-sm hub-avatar-initials">${this.get_initials(b.employee_name)}</div>`
+                                ? `<img class="hub-avatar-sm hub-birthday-avatar" src="${b.image}">`
+                                : `<div class="hub-avatar-sm hub-avatar-initials hub-birthday-avatar" style="background:${this.avatar_color(b.employee_name)}">${this.get_initials(b.employee_name)}</div>`
                         }
-                        <div>
-                            <div class="hub-list-title">${frappe.utils.escape_html(b.employee_name)}</div>
-                            <div class="hub-list-sub">${frappe.datetime.str_to_user(b.next_birthday)}</div>
-                        </div>
+                        <div class="hub-birthday-name">${frappe.utils.escape_html(b.employee_name)}</div>
+                        <div class="hub-birthday-date">${frappe.datetime.str_to_user(b.next_birthday)}</div>
                     </div>`
                               )
                               .join('') +

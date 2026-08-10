@@ -539,22 +539,60 @@
    from their avatar while long names sat close, making the list look
    inconsistent row to row. Left-aligned with a fixed gap keeps every row
    identical regardless of name length. */
+/* Grid instead of flex — the previous flex-based fix was still unreliable
+   because .hub-list-row's flexbox distributes space based on each child's
+   own content width, so short names (with a wide gap after) and long
+   wrapping names (with almost no gap) ended up looking inconsistent with
+   each other despite the same CSS. A fixed 3-column grid (avatar / name /
+   date) doesn't have that problem — every row lines up identically
+   regardless of content length. */
 .hub-birthday-row {
-    justify-content: flex-start !important;
-    gap: 10px;
+    display: grid !important;
+    grid-template-columns: 36px 1fr auto;
+    grid-template-areas: "avatar name date";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 2px;
 }
-.hub-birthday-row > div {
-    min-width: 0;
-    flex: 1;
+.hub-birthday-avatar { grid-area: avatar; margin-right: 0; }
+.hub-birthday-name {
+    grid-area: name;
+    font-size: 13px;
+    font-weight: 500;
+    color: #2d2d3a;
+    overflow-wrap: anywhere;
+}
+.hub-birthday-date {
+    grid-area: date;
+    font-size: 11px;
+    color: var(--hub-text-muted);
+    white-space: nowrap;
+    justify-self: end;
+}
+/* On narrow screens the date drops to its own line under the name instead
+   of squeezing into a third column, matching how every other card already
+   handles title+sub-line responsively. */
+@media (max-width: 480px) {
+    .hub-birthday-row {
+        grid-template-columns: 36px 1fr;
+        grid-template-areas:
+            "avatar name"
+            "avatar date";
+    }
+    .hub-birthday-date { justify-self: start; }
+}
+html[data-theme="dark"] .hub-birthday-name {
+    color: #f0f0f2;
 }
 .hub-avatar-initials {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--hub-purple), #a29bfe);
+    background: linear-gradient(135deg, var(--hub-purple), #a29bfe); /* fallback only — normally overridden inline per-person */
     color: #fff;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 /* Badges ------------------------------------------------------------------ */
