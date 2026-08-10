@@ -13,6 +13,10 @@ app_include_css = "/assets/employee_hub/css/employee_hub.css"
 # Requires the built-in "Employee" role (auto-assigned by ERPNext when a
 # User is linked to an Employee record).
 
+doctype_js = {
+    "Role Profile": "public/js/role_profile.js"
+}
+
 # role_home_page = {
 #     "Employee": "employee-hub"
 # }

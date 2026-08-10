@@ -1,3 +1,5 @@
+# Employee Hub — developed by Sebin P Sabu (sebin.freelance@gmail.com)
+
 import frappe
 from frappe import _
 from frappe.utils import (
@@ -829,12 +831,23 @@ def get_effective_layout():
     """Returns the layout that actually applies to the current user right
     now, already merged with the current default card/tab list, plus which
     tier it came from (so the UI can e.g. show "Reset to Default" only when
-    a personal layout is actually in effect)."""
+    a personal layout is actually in effect).
+
+    Resolution order: Personal -> Role Profile (if enabled site-wide, the
+    user has one assigned, and an enabled record exists for it) -> Global
+    Default."""
     user = frappe.session.user
 
     settings = frappe.get_single("Employee Hub Settings")
 
-    if frappe.db.exists("Employee Hub Layout", user):
+    # A saved personal layout is only served while personalization is
+    # currently enabled. If an admin later turns it off, existing personal
+    # layouts are NOT deleted (they stay intact, viewable read-only) — but
+    # every affected employee, including whoever made the customization,
+    # now sees whichever tier applies next (Role Profile if configured and
+    # enabled, otherwise Global Default), exactly as if they'd never
+    # personalized anything.
+    if settings.allow_personal_customization and frappe.db.exists("Employee Hub Layout", user):
         doc = frappe.get_doc("Employee Hub Layout", user)
         if doc.layout:
             return {
@@ -845,6 +858,21 @@ def get_effective_layout():
         # A personal layout record exists but has no rows in it (e.g. an
         # earlier test call saved an empty list) — treat that exactly the
         # same as "no personal layout", not as a genuine customization.
+
+    if settings.enable_role_profile_layouts:
+        role_profile = frappe.db.get_value("User", user, "role_profile_name")
+        if role_profile:
+            rp_meta = frappe.db.get_value(
+                "Employee Hub Role Profile Layout", role_profile, ["name", "enabled"], as_dict=True
+            )
+            if rp_meta and rp_meta.enabled:
+                rp_doc = frappe.get_doc("Employee Hub Role Profile Layout", role_profile)
+                if rp_doc.layout:
+                    return {
+                        "source": "role_profile",
+                        "allow_personal_customization": bool(settings.allow_personal_customization),
+                        "items": _merge_with_defaults(rp_doc.layout),
+                    }
 
     return {
         "source": "global",
@@ -1039,3 +1067,24 @@ def reset_global_default_layout():
         settings.append("global_default_layout", row)
     settings.save()
     return {"ok": True}
+
+
+@frappe.whitelist()
+def get_global_default_layout_items():
+    """Powers the 'Fetch Default Layout' button on Employee Hub Role
+    Profile Layout — returns the current Global Default Layout's rows as
+    plain dicts, ready to populate that form's own layout table."""
+    if "System Manager" not in frappe.get_roles():
+        frappe.throw(_("Only System Manager can fetch the default layout."), frappe.PermissionError)
+
+    settings = frappe.get_single("Employee Hub Settings")
+    return [
+        {
+            "scope": row.scope,
+            "tab": row.tab,
+            "card_key": row.card_key,
+            "is_hidden": row.is_hidden,
+            "sequence": row.sequence,
+        }
+        for row in settings.global_default_layout
+    ]

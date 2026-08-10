@@ -1,3 +1,5 @@
+# Employee Hub — developed by Sebin P Sabu (sebin.freelance@gmail.com)
+
 from setuptools import setup, find_packages
 
 with open("requirements.txt") as f:

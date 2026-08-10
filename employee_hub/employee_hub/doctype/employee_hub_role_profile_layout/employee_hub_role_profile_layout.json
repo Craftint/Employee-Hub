@@ -1,0 +1,62 @@
+{
+ "doctype": "DocType",
+ "name": "Employee Hub Role Profile Layout",
+ "module": "Employee Hub",
+ "custom": 0,
+ "autoname": "field:role_profile",
+ "engine": "InnoDB",
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "role_profile",
+   "fieldtype": "Link",
+   "options": "Role Profile",
+   "label": "Role Profile",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Which group of employees (by Role Profile) this layout applies to."
+  },
+  {
+   "fieldname": "column_break_switches",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "Uncheck to fall back to the global default for this group instead, without deleting their saved layout."
+  },
+  {
+   "fieldname": "section_break_layout",
+   "fieldtype": "Section Break",
+   "label": "Layout"
+  },
+  {
+   "fieldname": "layout_help",
+   "fieldtype": "HTML",
+   "options": "<p class='text-muted' style='margin-bottom:8px;'>Everyone with this Role Profile sees this layout instead of the global default, unless they've customized their own view. Edit the rows below to change what's shown and in what order.</p>"
+  },
+  {
+   "fieldname": "layout",
+   "fieldtype": "Table",
+   "label": "Layout Items",
+   "options": "Employee Hub Layout Item"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "select": 1,
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1
+  }
+ ],
+ "naming_rule": "By fieldname"
+}
