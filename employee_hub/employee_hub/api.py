@@ -507,7 +507,7 @@ def get_upcoming_birthdays(employee):
             d["next_birthday"] = next_bday
             upcoming.append(d)
     upcoming.sort(key=lambda x: x["days_away"])
-    return upcoming[:5]
+    return upcoming[:10]
 
 
 # ---------------------------------------------------------------------------

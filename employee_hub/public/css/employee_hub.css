@@ -527,10 +527,25 @@
 .hub-avatar-sm {
     width: 32px;
     height: 32px;
+    min-width: 32px;
     border-radius: 50%;
     object-fit: cover;
     margin-right: 4px;
     flex-shrink: 0;
+}
+/* Overrides .hub-list-row's default justify-content:space-between, which
+   was pushing the name/date to the far right edge by an amount that
+   depended on how long the name was — short names ("F", "Rania") sat far
+   from their avatar while long names sat close, making the list look
+   inconsistent row to row. Left-aligned with a fixed gap keeps every row
+   identical regardless of name length. */
+.hub-birthday-row {
+    justify-content: flex-start !important;
+    gap: 10px;
+}
+.hub-birthday-row > div {
+    min-width: 0;
+    flex: 1;
 }
 .hub-avatar-initials {
     display: flex;
