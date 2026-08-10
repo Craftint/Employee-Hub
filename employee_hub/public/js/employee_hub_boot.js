@@ -1,3 +1,5 @@
+// Employee Hub — developed by Sebin P Sabu (sebin.freelance@gmail.com)
+
 // ---------------------------------------------------------------------------
 // One-shot redirect to Employee Hub immediately after login. Server-side,
 // on_login (boot.py) sets a short-lived cache flag scoped to this exact

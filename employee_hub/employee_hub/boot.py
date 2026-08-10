@@ -1,3 +1,5 @@
+# Employee Hub — developed by Sebin P Sabu (sebin.freelance@gmail.com)
+
 import frappe
 
 REDIRECT_CACHE_PREFIX = "employee_hub_redirect_once:"

@@ -1,3 +1,5 @@
+/* Employee Hub — developed by Sebin P Sabu (sebin.freelance@gmail.com) */
+
 :root {
     --hub-purple: #6C5CE7;
     --hub-purple-dark: #5b4bd6;
@@ -547,52 +549,26 @@
    date) doesn't have that problem — every row lines up identically
    regardless of content length. */
 .hub-birthday-row {
-    display: grid !important;
-    grid-template-columns: 36px 1fr auto;
-    grid-template-areas: "avatar name date";
+    display: flex !important;
     align-items: center;
-    column-gap: 10px;
-    row-gap: 2px;
+    justify-content: flex-start !important;
+    gap: 10px;
 }
-.hub-birthday-avatar { grid-area: avatar; margin-right: 0; }
-.hub-birthday-name {
-    grid-area: name;
-    font-size: 13px;
-    font-weight: 500;
-    color: #2d2d3a;
-    overflow-wrap: anywhere;
-}
-.hub-birthday-date {
-    grid-area: date;
-    font-size: 11px;
-    color: var(--hub-text-muted);
-    white-space: nowrap;
-    justify-self: end;
-}
-/* On narrow screens the date drops to its own line under the name instead
-   of squeezing into a third column, matching how every other card already
-   handles title+sub-line responsively. */
-@media (max-width: 480px) {
-    .hub-birthday-row {
-        grid-template-columns: 36px 1fr;
-        grid-template-areas:
-            "avatar name"
-            "avatar date";
-    }
-    .hub-birthday-date { justify-self: start; }
-}
-html[data-theme="dark"] .hub-birthday-name {
-    color: #f0f0f2;
+.hub-birthday-text {
+    min-width: 0;
+    flex: 1;
+    text-align: left;
 }
 .hub-avatar-initials {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     background: linear-gradient(135deg, var(--hub-purple), #a29bfe); /* fallback only — normally overridden inline per-person */
     color: #fff;
     font-size: 15px;
     font-weight: 700;
     letter-spacing: -0.02em;
+    line-height: 1;
 }
 
 /* Badges ------------------------------------------------------------------ */
@@ -1158,5 +1134,28 @@ html[data-theme="dark"] .hub-sortable-ghost {
 html[data-theme="dark"] .hub-reset-default-btn {
     background: var(--hub-purple) !important;
     border-color: var(--hub-purple) !important;
+    color: #fff !important;
+}
+
+/* Fetch Default Layout (Employee Hub Role Profile Layout form) and the
+   Role Profile → Employee Hub Layout link button (Role Profile form) — a
+   distinct teal so all three admin buttons stay visually distinguishable
+   from each other and from Reset to Default's purple. */
+.hub-fetch-default-btn,
+.hub-role-profile-link-btn {
+    background: #17a2b8 !important;
+    border-color: #17a2b8 !important;
+    color: #fff !important;
+}
+.hub-fetch-default-btn:hover,
+.hub-role-profile-link-btn:hover {
+    background: #128294 !important;
+    border-color: #128294 !important;
+    color: #fff !important;
+}
+html[data-theme="dark"] .hub-fetch-default-btn,
+html[data-theme="dark"] .hub-role-profile-link-btn {
+    background: #17a2b8 !important;
+    border-color: #17a2b8 !important;
     color: #fff !important;
 }
