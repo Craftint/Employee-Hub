@@ -435,10 +435,11 @@ class EmployeeHub {
                 <div class="hub-card-body">
                 ${
                     birthdays.length
-                        ? birthdays
+                        ? `<div class="hub-scroll-list hub-scroll-4">` +
+                          birthdays
                               .map(
                                   (b) => `
-                    <div class="hub-list-row">
+                    <div class="hub-list-row hub-birthday-row">
                         ${
                             b.image
                                 ? `<img class="hub-avatar-sm" src="${b.image}">`
@@ -450,7 +451,8 @@ class EmployeeHub {
                         </div>
                     </div>`
                               )
-                              .join('')
+                              .join('') +
+                          `</div>`
                         : '<p class="text-muted hub-empty">No birthdays in the next 30 days.</p>'
                 }
                 </div>
@@ -1814,10 +1816,11 @@ class EmployeeHub {
                 <div class="hub-card-body">
                 ${
                     d.birthdays.length
-                        ? d.birthdays
+                        ? `<div class="hub-scroll-list hub-scroll-4">` +
+                          d.birthdays
                               .map(
                                   (b) => `
-                    <div class="hub-list-row">
+                    <div class="hub-list-row hub-birthday-row">
                         ${
                             b.image
                                 ? `<img class="hub-avatar-sm" src="${b.image}">`
@@ -1829,7 +1832,8 @@ class EmployeeHub {
                         </div>
                     </div>`
                               )
-                              .join('')
+                              .join('') +
+                          `</div>`
                         : '<p class="text-muted hub-empty">No birthdays in the next 30 days.</p>'
                 }
                 </div>
