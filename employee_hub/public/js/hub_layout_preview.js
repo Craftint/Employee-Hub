@@ -33,7 +33,8 @@ const HUB_PREVIEW_CARD_REGISTRY = {
     'task-donut': { kind: 'chart-donut', category: 'list', title: 'Task Status Breakdown' },
     'quick-actions': { kind: 'quick-actions', category: 'list', title: 'Quick Actions' },
     birthdays: { kind: 'birthdays', category: 'list', title: 'Upcoming Birthdays' },
-    'documents-info': { kind: 'documents', category: 'list', title: 'Documents' },
+    'my-documents-valid': { kind: 'my-documents-valid', category: 'list', title: 'My Documents' },
+    'my-documents-expiring': { kind: 'my-documents-expiring', category: 'list', title: 'Expiring Soon' },
     'leave-balance': { kind: 'leave-balance', category: 'list', title: 'Leave Balance' },
     attendance: { kind: 'list', category: 'list', title: 'Attendance' },
     'employee-checkin': { kind: 'list', category: 'list', title: 'Employee Checkin' },
@@ -327,9 +328,27 @@ class HubLayoutPreview {
                 </div>`
             ).join('');
             bodyHtml = `<div class="hub-card-header"><h4>Upcoming Birthdays</h4></div><div class="hub-card-body">${rows}</div>`;
-        } else if (meta.kind === 'documents') {
-            bodyHtml = `<div class="hub-card-header"><h4>Documents</h4></div>
-                <div class="hub-card-body"><p class="text-muted hub-empty">Sample: document tracking placeholder.</p></div>`;
+        } else if (meta.kind === 'my-documents-valid' || meta.kind === 'my-documents-expiring') {
+            const sample =
+                meta.kind === 'my-documents-valid'
+                    ? [
+                          ['Passport', 'Valid', '#2ecc71', '12 Jun 2028'],
+                          ['Emirates Id', 'Valid', '#2ecc71', '01 Mar 2027'],
+                          ['Visa Copy', 'Valid', '#2ecc71', '20 Nov 2026'],
+                      ]
+                    : [
+                          ['Driving License', 'Valid', '#2ecc71', '25 Aug 2026'],
+                          ['Health Insurance Card', 'Valid', '#2ecc71', '02 Sep 2026'],
+                      ];
+            const rows = sample
+                .map(
+                    ([name, status, color, date]) => `<div class="hub-list-row">
+                        <div><div class="hub-list-title">${name}</div><div class="hub-list-sub">Expires ${date}</div></div>
+                        <span class="hub-badge" style="background:${color}22;color:${color};">${status}</span>
+                    </div>`
+                )
+                .join('');
+            bodyHtml = `<div class="hub-card-header"><h4>${meta.title}</h4></div><div class="hub-card-body">${rows}</div>`;
         } else if (meta.kind === 'leave-balance') {
             bodyHtml = `<div class="hub-card-header"><h4>Leave Balance</h4></div>
                 <div class="hub-card-body">
@@ -631,7 +650,7 @@ function build_hub_layout_header(frm, opts) {
 
     $toggleBtn.on('click', () => {
         if ($toggleBtn.attr('data-empty')) {
-            frappe.msgprint(__('There\'s nothing to preview yet — use {0}, or add at least one row to the table below first.', [opts.fetchLabel || __('Fetch Default Layout')]));
+            frappe.msgprint(__('There\'s nothing to preview yet — use {0} first.', [opts.fetchLabel || __('Fetch Default Layout')]));
             return;
         }
         frm._hub_in_preview = !frm._hub_in_preview;

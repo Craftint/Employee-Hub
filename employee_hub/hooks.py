@@ -15,6 +15,16 @@ doctype_js = {
 }
 
 
+permission_query_conditions = {
+    "My Document": "employee_hub.employee_hub.utils.my_document_permissions.get_permission_query_conditions"
+}
+has_permission = {
+    "My Document": "employee_hub.employee_hub.utils.my_document_permissions.has_permission"
+}
+
+# Redirect employees straight to Employee Hub after login -------------------
+# Requires the built-in "Employee" role (auto-assigned by ERPNext when a
+# User is linked to an Employee record).
 
 # role_home_page = {
 #     "Employee": "employee-hub"

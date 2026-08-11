@@ -1258,3 +1258,105 @@ html[data-theme="dark"] .hub-rp-reset-btn { background: var(--hub-purple); borde
 html[data-theme="dark"] .hub-rp-preview-wrapper {
     border-color: #3d3d40;
 }
+
+/* My Document rows on the Documents tab — name+expiry, colored status
+   badge, and a preview icon, all in one row; responsive via flex-wrap. */
+.hub-my-document-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    flex-wrap: wrap;
+}
+.hub-my-document-main {
+    min-width: 0;
+    flex: 1;
+}
+.hub-my-document-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    color: #6b6b80;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.hub-my-document-preview:hover {
+    background: rgba(108, 92, 231, 0.1);
+    color: var(--hub-purple);
+}
+html[data-theme="dark"] .hub-my-document-preview {
+    color: #d0d0d3;
+}
+
+/* My Documents card filter — status dropdown on the valid-docs card, aging
+   bucket on the expiring-soon card. Same visual language as the app's
+   existing mini/status filter pills. */
+.hub-doc-filter {
+    position: relative;
+    display: inline-flex;
+}
+.hub-doc-filter-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #F0F0F5;
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #5a5a6e;
+    cursor: pointer;
+}
+.hub-doc-filter-icon {
+    font-size: 8px;
+}
+.hub-doc-filter-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(20, 20, 40, 0.16);
+    min-width: 140px;
+    padding: 6px;
+    z-index: 20;
+}
+.hub-doc-filter.open .hub-doc-filter-menu {
+    display: block;
+}
+.hub-doc-filter-option {
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #2d2d3a;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.hub-doc-filter-option:hover {
+    background: var(--hub-bg);
+}
+.hub-doc-filter-option.active {
+    color: var(--hub-purple);
+    font-weight: 600;
+}
+html[data-theme="dark"] .hub-doc-filter-label {
+    background: #333336;
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-doc-filter-menu {
+    background: #2a2a2d;
+    border-color: #3d3d40;
+}
+html[data-theme="dark"] .hub-doc-filter-option {
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-doc-filter-option:hover {
+    background: #333336;
+}
