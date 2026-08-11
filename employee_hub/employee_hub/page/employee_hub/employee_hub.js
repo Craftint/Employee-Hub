@@ -655,6 +655,23 @@ class EmployeeHub {
         });
     }
 
+    delete_duplicate_card(cardKey) {
+        const remaining = this.pendingLayout.filter(
+            (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key !== cardKey
+        );
+        if (!remaining.length) {
+            frappe.msgprint(__('A tab needs at least one card. Hide the whole tab instead if you want it empty.'));
+            return;
+        }
+        this.pendingLayout = this.pendingLayout.filter(
+            (i) => !(i.scope === 'Card' && i.tab === this.activeTab && i.card_key === cardKey)
+        );
+        this.mark_dirty();
+        this.apply_layout_to_dom();
+        this.render_customize_affordances();
+        frappe.show_alert({ message: __('Removed from this tab'), indicator: 'blue' });
+    }
+
     // Adds/removes the eye + drag-handle overlay (with text labels above
     // them, per spec) on every visible-or-dimmed tab pill and card, and
     // toggles `draggable` — only called while entering/updating/exiting
@@ -669,6 +686,10 @@ class EmployeeHub {
         this.pendingLayout.forEach((i) => {
             if (i.scope === 'Card') cardMap[`${i.tab}|${i.card_key}`] = i;
         });
+        const cardKeyCounts = {};
+        this.pendingLayout.forEach((i) => {
+            if (i.scope === 'Card') cardKeyCounts[i.card_key] = (cardKeyCounts[i.card_key] || 0) + 1;
+        });
 
         const tabOverlay = (isHidden) => `
             <div class="hub-customize-overlay">
@@ -678,7 +699,7 @@ class EmployeeHub {
                 <span class="hub-drag-handle" title="Drag to reorder">${this.drag_icon_svg()}</span>
             </div>`;
 
-        const cardOverlay = (isHidden) => `
+        const cardOverlay = (isHidden, isDuplicated) => `
             <div class="hub-customize-overlay">
                 <span class="hub-eye-icon" title="${isHidden ? 'Show' : 'Hide'}">${
             isHidden ? this.eye_off_icon_svg() : this.eye_icon_svg()
@@ -686,6 +707,7 @@ class EmployeeHub {
                 <span class="hub-drag-handle" title="Drag to reorder">${this.drag_icon_svg()}</span>
                 <span class="hub-duplicate-icon" title="Duplicate to Another Tab">${this.duplicate_icon_svg()}</span>
                 <span class="hub-move-to-icon" title="Move to a different tab">${this.move_to_icon_svg()}</span>
+                ${isDuplicated ? `<span class="hub-delete-duplicate-icon" title="Remove this duplicate">${this.delete_icon_svg()}</span>` : ''}
             </div>`;
 
         this.$container.find('.hub-tab').each((_, el) => {
@@ -697,7 +719,8 @@ class EmployeeHub {
         this.$main.find('[data-card-key]').each((_, el) => {
             const key = $(el).attr('data-card-key');
             const item = cardMap[`${this.activeTab}|${key}`];
-            $(el).append(cardOverlay(!!(item && item.is_hidden)));
+            const isDuplicated = (cardKeyCounts[key] || 0) > 1;
+            $(el).append(cardOverlay(!!(item && item.is_hidden), isDuplicated));
         });
     }
 
@@ -713,6 +736,12 @@ class EmployeeHub {
         return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.8"/>
+        </svg>`;
+    }
+
+    delete_icon_svg() {
+        return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>`;
     }
 
@@ -1007,6 +1036,14 @@ class EmployeeHub {
             e.stopPropagation();
             const $card = $(e.currentTarget).closest('[data-card-key]');
             this.open_duplicate_menu($card);
+        });
+
+        // Delete-duplicate icon — only ever shown on cards that exist on
+        // more than one tab; removes just this one occurrence.
+        this.$container.on('click', '.hub-delete-duplicate-icon', (e) => {
+            e.stopPropagation();
+            const cardKey = $(e.currentTarget).closest('[data-card-key]').attr('data-card-key');
+            this.delete_duplicate_card(cardKey);
         });
 
         // Reordering itself is handled by SortableJS (see init_sortable) —

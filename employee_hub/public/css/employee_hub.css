@@ -1013,7 +1013,7 @@ html[data-theme="dark"] .employee-hub-pinned-label {
     background: rgba(255, 255, 255, 0.2);
     color: #fff;
 }
-.hub-move-to-icon, .hub-duplicate-icon {
+.hub-move-to-icon, .hub-duplicate-icon, .hub-delete-duplicate-icon {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1026,6 +1026,10 @@ html[data-theme="dark"] .employee-hub-pinned-label {
 .hub-move-to-icon:hover, .hub-duplicate-icon:hover {
     background: rgba(108, 92, 231, 0.1);
     color: var(--hub-purple);
+}
+.hub-delete-duplicate-icon:hover {
+    background: rgba(231, 76, 60, 0.12);
+    color: #e74c3c;
 }
 .hub-move-to-menu {
     position: absolute;
@@ -1053,7 +1057,7 @@ html[data-theme="dark"] .employee-hub-pinned-label {
     background: var(--hub-bg);
     color: var(--hub-purple);
 }
-html[data-theme="dark"] .hub-move-to-icon, html[data-theme="dark"] .hub-duplicate-icon {
+html[data-theme="dark"] .hub-move-to-icon, html[data-theme="dark"] .hub-duplicate-icon, html[data-theme="dark"] .hub-delete-duplicate-icon {
     color: #d0d0d3;
 }
 html[data-theme="dark"] .hub-move-to-menu {
@@ -1340,8 +1344,45 @@ html[data-theme="dark"] .hub-my-document-preview {
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(20, 20, 40, 0.16);
     min-width: 140px;
+    max-width: 220px;
     padding: 6px;
-    z-index: 20;
+    z-index: 60;
+}
+@media (max-width: 480px) {
+    .hub-card-header-right {
+        width: 100%;
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+    /* Anchoring to the trigger button kept overflowing on narrow cards
+       regardless of which edge it was pinned to, since the button's own
+       position varies. A viewport-centered fixed popup sidesteps that
+       entirely — it's always in the same safe spot no matter how narrow
+       the card or where the button sits within it. */
+    .hub-doc-filter-menu {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, -50%);
+        width: 78vw;
+        max-width: 260px;
+        max-height: 60vh;
+        overflow-y: auto;
+        font-size: 12px;
+        z-index: 200;
+    }
+    .hub-doc-filter-option {
+        font-size: 12px;
+        text-align: center;
+    }
+    .hub-doc-filter.open::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 150;
+    }
 }
 .hub-doc-filter.open .hub-doc-filter-menu {
     display: block;
