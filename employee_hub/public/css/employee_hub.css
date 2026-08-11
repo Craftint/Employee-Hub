@@ -1159,3 +1159,102 @@ html[data-theme="dark"] .hub-role-profile-link-btn {
     border-color: #17a2b8 !important;
     color: #fff !important;
 }
+
+/* Role Profile Layout form — inline header strip sitting directly above
+   the Layout Items table (not in the page toolbar), containing Preview /
+   Table View, Customize, Sidebar, and Reset to Default. */
+.hub-rp-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 4px 0 10px;
+}
+.hub-rp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--hub-border);
+    background: #fff;
+    color: #4a4a5e;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hub-rp-toggle-btn:hover, .hub-rp-sidebar-btn:hover { background: var(--hub-bg); }
+.hub-rp-toggle-btn.hub-rp-btn-active {
+    background: #F2994A;
+    border-color: #F2994A;
+    color: #fff;
+}
+.hub-rp-customize-btn {
+    position: relative;
+    background: #17a2b8;
+    border-color: #17a2b8;
+    color: #fff;
+}
+.hub-rp-customize-btn:hover { background: #128294; border-color: #128294; }
+.hub-rp-customize-btn.hub-rp-btn-active { background: #128294; border-color: #128294; }
+.hub-rp-customize-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e74c3c;
+    box-shadow: 0 0 0 1.5px #fff;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.hub-rp-customize-btn.hub-rp-btn-active .hub-rp-customize-dot {
+    opacity: 1;
+    animation: hub-pulse 1.6s ease-in-out infinite;
+}
+.hub-rp-reset-btn {
+    background: var(--hub-purple);
+    border-color: var(--hub-purple);
+    color: #fff;
+}
+.hub-rp-reset-btn:hover { background: var(--hub-purple-dark); border-color: var(--hub-purple-dark); }
+html[data-theme="dark"] .hub-rp-btn {
+    background: #2a2a2d;
+    border-color: #3d3d40;
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-rp-toggle-btn:hover, html[data-theme="dark"] .hub-rp-sidebar-btn:hover { background: #333336; }
+html[data-theme="dark"] .hub-rp-toggle-btn.hub-rp-btn-active { background: #F2994A; border-color: #F2994A; color: #fff; }
+
+.hub-rp-btn-disabled {
+    opacity: 0.45;
+}
+/* Auto-collapses the form's own left sidebar while in Preview — a plain
+   class, no !important, specifically so it never fights or overrides
+   whatever Frappe's own native sidebar-toggle (☰) mechanism relies on;
+   that native control stays the one true way to bring it back. */
+.hub-rp-sidebar-collapsed {
+    display: none !important;
+}
+html[data-theme="dark"] .hub-rp-customize-btn { background: #17a2b8; border-color: #17a2b8; color: #fff; }
+html[data-theme="dark"] .hub-rp-reset-btn { background: var(--hub-purple); border-color: var(--hub-purple); color: #fff; }
+
+/* The preview wrapper itself — bounded, scrollable, with its own border so
+   it reads clearly as a distinct "live preview" area within the form
+   rather than blending into the rest of the page. */
+.hub-rp-preview-wrapper {
+    border: 1px solid var(--hub-border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+.hub-rp-preview.employee-hub {
+    padding: 12px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.hub-rp-main {
+    min-width: 0;
+}
+html[data-theme="dark"] .hub-rp-preview-wrapper {
+    border-color: #3d3d40;
+}

@@ -19,6 +19,13 @@ class EmployeeHubRoleProfileLayout(Document):
                 frappe._("Role Profile Based Layouts are currently disabled in Employee Hub Settings.")
             )
 
+        if not self.layout:
+            frappe.throw(
+                frappe._(
+                    "Add at least one row to the layout before saving — use Fetch Default Layout to get started."
+                )
+            )
+
         # Reuses the exact same checks already applied to Employee Hub
         # Settings and Employee Hub Layout — duplicate tab/card detection,
         # unknown tab values, and "a visible tab needs at least one visible
