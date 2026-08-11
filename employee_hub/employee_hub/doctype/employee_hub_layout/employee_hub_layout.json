@@ -20,7 +20,8 @@
    "fieldname": "layout",
    "fieldtype": "Table",
    "label": "Layout Items",
-   "options": "Employee Hub Layout Item"
+   "options": "Employee Hub Layout Item",
+   "read_only": 1
   }
  ],
  "permissions": [
