@@ -33,6 +33,7 @@ const LIST_ROUTE_MAP = {
     communication: 'Communication',
     'event-list': 'Event',
     'todo-list': 'ToDo',
+    'my-document': 'My Document',
 };
 
 // Preset options in the mini filter dropdown. "Select Date Range" is
@@ -75,6 +76,11 @@ const CARD_DEFAULT_PERIOD = {
 function default_period_for(cardKey) {
     return CARD_DEFAULT_PERIOD[cardKey] || 'today';
 }
+function getdate_local() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
 
 // Describes every card well enough to build and populate it on ANY tab —
 // this is what makes "Move To" actually work: without this, a moved card's
@@ -92,7 +98,8 @@ const CARD_REGISTRY = {
     'salary-trend': { kind: 'chart-salary-trend' },
     'task-donut': { kind: 'chart-task-donut' },
     'quick-actions': { kind: 'static-quick-actions' },
-    'documents-info': { kind: 'static-documents-info' },
+    'my-documents-valid': { kind: 'my-documents-valid' },
+    'my-documents-expiring': { kind: 'my-documents-expiring' },
     'leave-balance': { kind: 'leave-balance' },
     'birthdays': { kind: 'birthdays' },
     attendance: { kind: 'list', title: 'Attendance', seeMoreKey: 'attendance' },
@@ -408,16 +415,19 @@ class EmployeeHub {
             return;
         }
 
-        if (meta.kind === 'static-documents-info') {
-            $row.append(`
-                <div class="hub-card" data-card-key="documents-info" data-category="list">
-                    <div class="hub-card-header"><h4>Documents</h4></div>
-                    <div class="hub-card-body">
-                        <p class="text-muted hub-empty">Document tracking (Visa, Passport, Emirates ID, etc.) isn't wired up yet.
-                        For now you can view attachments on your Employee record.</p>
-                        <a class="hub-card-link" data-route-doctype="employee-form">Open My Employee Record &rarr;</a>
-                    </div>
-                </div>`);
+        if (meta.kind === 'my-documents-valid' || meta.kind === 'my-documents-expiring') {
+            const isValidCard = meta.kind === 'my-documents-valid';
+            const filters = isValidCard ? { status: 'Valid', aging: null } : { status: 'Valid', aging: null };
+            const r = await frappe.call('employee_hub.employee_hub.api.get_my_documents_card', filters);
+            const docs = r.message.documents || [];
+            this.docFilters = this.docFilters || {};
+            this.docFilters[key] = filters;
+            if (isValidCard) {
+                $row.append(this.my_documents_list_card_html(key, 'My Documents', docs, 'No documents on file yet.', filters));
+            } else {
+                $row.append(this.my_documents_chart_card_html(key, 'Expiring Soon', docs.slice(0, 5), filters));
+                this.init_expiry_chart();
+            }
             return;
         }
 
@@ -442,11 +452,13 @@ class EmployeeHub {
                     <div class="hub-list-row hub-birthday-row">
                         ${
                             b.image
-                                ? `<img class="hub-avatar-sm hub-birthday-avatar" src="${b.image}">`
-                                : `<div class="hub-avatar-sm hub-avatar-initials hub-birthday-avatar" style="background:${this.avatar_color(b.employee_name)}">${this.get_initials(b.employee_name)}</div>`
+                                ? `<img class="hub-avatar-sm" src="${b.image}">`
+                                : `<div class="hub-avatar-sm hub-avatar-initials" style="background:${this.avatar_color(b.employee_name)}">${this.get_initials(b.employee_name)}</div>`
                         }
-                        <div class="hub-birthday-name">${frappe.utils.escape_html(b.employee_name)}</div>
-                        <div class="hub-birthday-date">${frappe.datetime.str_to_user(b.next_birthday)}</div>
+                        <div class="hub-birthday-text">
+                            <div class="hub-list-title">${frappe.utils.escape_html(b.employee_name)}</div>
+                            <div class="hub-list-sub">${frappe.datetime.str_to_user(b.next_birthday)}</div>
+                        </div>
                     </div>`
                               )
                               .join('') +
@@ -883,6 +895,40 @@ class EmployeeHub {
             if (doctype && name) frappe.set_route('Form', doctype, name);
         });
 
+        this.$container.on('click', '.hub-my-document-row', (e) => {
+            if (this.customizeMode || $(e.target).closest('.hub-my-document-preview').length) return;
+            const name = $(e.currentTarget).attr('data-doc-name');
+            if (name) frappe.set_route('Form', 'My Document', name);
+        });
+
+        this.$container.on('click', '.hub-my-document-preview', (e) => {
+            if (this.customizeMode) return;
+            e.stopPropagation();
+            const name = $(e.currentTarget).attr('data-doc-name');
+            if (!name) return;
+            frappe.call('employee_hub.employee_hub.api.get_document_preview_url', { name: name }).then((r) => {
+                if (r.message) window.open(r.message, '_blank');
+            });
+        });
+
+        this.$container.on('click', '.hub-doc-filter-label', function (e) {
+            e.stopPropagation();
+            const $filter = $(this).closest('.hub-doc-filter');
+            const wasOpen = $filter.hasClass('open');
+            $('.hub-doc-filter').removeClass('open');
+            if (!wasOpen) $filter.addClass('open');
+        });
+        this.$container.on('click', '.hub-doc-filter-menu', (e) => e.stopPropagation());
+        this.$container.on('click', '.hub-doc-filter-option', (e) => {
+            const $filter = $(e.currentTarget).closest('.hub-doc-filter');
+            const cardKey = $filter.attr('data-card-key');
+            const filterType = $filter.attr('data-filter-type');
+            const value = $(e.currentTarget).attr('data-value');
+            $('.hub-doc-filter').removeClass('open');
+            this.refresh_my_documents_card(cardKey, filterType, value);
+        });
+        $(document).on('click.hubDocFilterOutside', () => $('.hub-doc-filter').removeClass('open'));
+
         this.$container.on('click', '.hub-comm-icon', () => {
             frappe.set_route('List', 'Communication', { reference_doctype: 'Employee', reference_name: this.employee });
         });
@@ -1270,7 +1316,7 @@ class EmployeeHub {
         else if (key === 'tasks') this.render_tasks_tab(data);
         else if (key === 'performance') this.render_performance_tab(data);
         else if (key === 'requests') this.render_requests_tab(data);
-        else if (key === 'documents') this.render_documents_tab();
+        else if (key === 'documents') this.render_documents_tab(data);
 
         this.apply_layout_to_dom();
         await this.inject_foreign_cards();
@@ -1834,11 +1880,13 @@ class EmployeeHub {
                     <div class="hub-list-row hub-birthday-row">
                         ${
                             b.image
-                                ? `<img class="hub-avatar-sm hub-birthday-avatar" src="${b.image}">`
-                                : `<div class="hub-avatar-sm hub-avatar-initials hub-birthday-avatar" style="background:${this.avatar_color(b.employee_name)}">${this.get_initials(b.employee_name)}</div>`
+                                ? `<img class="hub-avatar-sm" src="${b.image}">`
+                                : `<div class="hub-avatar-sm hub-avatar-initials" style="background:${this.avatar_color(b.employee_name)}">${this.get_initials(b.employee_name)}</div>`
                         }
-                        <div class="hub-birthday-name">${frappe.utils.escape_html(b.employee_name)}</div>
-                        <div class="hub-birthday-date">${frappe.datetime.str_to_user(b.next_birthday)}</div>
+                        <div class="hub-birthday-text">
+                            <div class="hub-list-title">${frappe.utils.escape_html(b.employee_name)}</div>
+                            <div class="hub-list-sub">${frappe.datetime.str_to_user(b.next_birthday)}</div>
+                        </div>
                     </div>`
                               )
                               .join('') +
@@ -2080,17 +2128,187 @@ class EmployeeHub {
     }
 
     // -----------------------------------------------------------------
-    render_documents_tab() {
+    render_documents_tab(data) {
         this.$main.empty();
-        this.$main.append(`
-            <div class="hub-card" data-card-key="documents-info" data-category="list">
-                <div class="hub-card-header"><h4>Documents</h4></div>
-                <div class="hub-card-body">
-                    <p class="text-muted hub-empty">Document tracking (Visa, Passport, Emirates ID, etc.) isn't wired up yet.
-                    For now you can view attachments on your Employee record.</p>
-                    <a class="hub-card-link" data-route-doctype="employee-form">Open My Employee Record &rarr;</a>
+        this.docFilters = this.docFilters || {
+            'my-documents-valid': { status: 'Valid', aging: null },
+            'my-documents-expiring': { status: 'Valid', aging: null },
+        };
+        const $row = $('<div class="hub-grid" data-cols="2"></div>').appendTo(this.$main);
+        $row.append(this.my_documents_list_card_html('my-documents-valid', 'My Documents', data.my_documents_valid || [], 'No documents on file yet.', this.docFilters['my-documents-valid']));
+        $row.append(this.my_documents_chart_card_html('my-documents-expiring', 'Expiring Soon', data.my_documents_expiring || [], this.docFilters['my-documents-expiring']));
+        this.init_expiry_chart();
+    }
+
+    doc_filter_html(cardKey, filters) {
+        const statusOptions = ['To Verify', 'Valid', 'Expired', 'Invalid'];
+        const agingOptions = [
+            { value: '30', label: 'Within 30 days' },
+            { value: '60', label: '31–60 days' },
+            { value: '90', label: '61–90 days' },
+            { value: '120', label: '91–120 days' },
+        ];
+        const agingLabel = filters.aging ? agingOptions.find((o) => o.value === filters.aging).label : 'Any expiry';
+        return `
+            <div class="hub-doc-filter" data-card-key="${cardKey}" data-filter-type="status">
+                <span class="hub-doc-filter-label">${filters.status}<span class="hub-doc-filter-icon">&#9660;</span></span>
+                <div class="hub-doc-filter-menu">
+                    ${statusOptions.map((s) => `<div class="hub-doc-filter-option ${s === filters.status ? 'active' : ''}" data-value="${s}">${s}</div>`).join('')}
                 </div>
-            </div>`);
+            </div>
+            <div class="hub-doc-filter" data-card-key="${cardKey}" data-filter-type="aging">
+                <span class="hub-doc-filter-label">${agingLabel}<span class="hub-doc-filter-icon">&#9660;</span></span>
+                <div class="hub-doc-filter-menu">
+                    <div class="hub-doc-filter-option ${!filters.aging ? 'active' : ''}" data-value="">Any expiry</div>
+                    ${agingOptions.map((o) => `<div class="hub-doc-filter-option ${o.value === filters.aging ? 'active' : ''}" data-value="${o.value}">${o.label}</div>`).join('')}
+                </div>
+            </div>`;
+    }
+
+    my_documents_list_card_html(cardKey, title, docs, emptyText, filters) {
+        const statusColor = { 'To Verify': '#3498db', Valid: '#2ecc71', Expired: '#e74c3c', Invalid: '#f39c12' };
+        const rows = docs
+            .map(
+                (d) => `
+            <div class="hub-list-row hub-my-document-row" data-doc-name="${frappe.utils.escape_html(d.name)}">
+                <div class="hub-my-document-main">
+                    <div class="hub-list-title">${frappe.utils.escape_html(d.document_name)}</div>
+                    <div class="hub-list-sub">${d.expiry_date ? 'Expires ' + frappe.datetime.str_to_user(d.expiry_date) : ''}</div>
+                </div>
+                <span class="hub-badge" style="background:${statusColor[d.status] || '#95a5a6'}22;color:${statusColor[d.status] || '#95a5a6'};">${d.status}</span>
+                <span class="hub-my-document-preview" title="Preview" data-doc-name="${frappe.utils.escape_html(d.name)}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+                    </svg>
+                </span>
+            </div>`
+            )
+            .join('');
+
+        return `<div class="hub-card" data-card-key="${cardKey}" data-category="list">
+            <div class="hub-card-header"><h4>${title}</h4>
+                <div class="hub-card-header-right">${this.doc_filter_html(cardKey, filters)}<a class="hub-view-all" data-route-doctype="my-document">See more</a></div>
+            </div>
+            <div class="hub-card-body hub-scroll-list hub-scroll-7">
+                ${docs.length ? rows : `<p class="text-muted hub-empty">${emptyText}</p>`}
+            </div>
+        </div>`;
+    }
+
+    my_documents_chart_card_html(cardKey, title, docs, filters) {
+        return `<div class="hub-card" data-card-key="${cardKey}" data-category="list">
+            <div class="hub-card-header"><h4>${title}</h4>
+                <div class="hub-card-header-right">${this.doc_filter_html(cardKey, filters)}<a class="hub-view-all" data-route-doctype="my-document">See more</a></div>
+            </div>
+            <div class="hub-card-body">${this.render_expiring_radial_chart(docs)}</div>
+        </div>`;
+    }
+
+    // Custom radial/concentric arc chart — frappe.Chart has no chart type
+    // for this, so it's hand-built SVG. Each ring is one of the soonest 5
+    // expiring documents; the soonest gets the outermost (most visually
+    // prominent) ring specifically so the most urgent document draws the
+    // eye first. Arc length is proportional to days remaining relative to
+    // the group shown, so a short arc reads as "not much time left" at a
+    // glance. Everything lives in SVG viewBox coordinates (not separate
+    // HTML overlay positioning) so it scales perfectly with the SVG's own
+    // responsive width — no separate resize handling needed.
+    render_expiring_radial_chart(docs) {
+        const top5 = docs.slice(0, 5);
+        if (!top5.length) {
+            return '<p class="text-muted hub-empty" style="padding:30px 0;">Nothing in this range.</p>';
+        }
+
+        const today = getdate_local();
+        const withDays = top5
+            .map((d) => ({ ...d, days: Math.max(0, Math.round((new Date(d.expiry_date) - today) / 86400000)) }))
+            .sort((a, b) => a.days - b.days); // index 0 = soonest
+
+        const maxDays = Math.max(...withDays.map((d) => d.days), 1);
+        const colors = ['#e84393', '#3498db', '#8e7dbe', '#f39c12', '#00b894'];
+        const cx = 200,
+            cy = 200;
+        const startAngle = -140;
+        const maxSweep = 260;
+        const maxRadius = 172;
+        const ringGap = 28;
+
+        const polarToCartesian = (r, angleDeg) => {
+            const rad = ((angleDeg - 90) * Math.PI) / 180;
+            return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+        };
+        const describeArc = (r, a1, a2) => {
+            const start = polarToCartesian(r, a2);
+            const end = polarToCartesian(r, a1);
+            const largeArc = a2 - a1 <= 180 ? 0 : 1;
+            return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 0 ${end.x} ${end.y}`;
+        };
+
+        const n = withDays.length;
+        let arcs = '';
+        let guides = '';
+        let labels = '';
+
+        withDays.forEach((d, i) => {
+            const ringIndex = n - 1 - i; // soonest (i=0) -> outermost ring
+            // Anchored from a fixed outer radius inward — the outermost
+            // ring always sits near the edge of the canvas regardless of
+            // how many rings there are, rather than everything clustering
+            // near the center when there are only 1-2 documents.
+            const radius = maxRadius - ringGap * (n - 1 - ringIndex);
+            const sweep = Math.max(18, maxSweep * (d.days / maxDays));
+            const color = colors[i % colors.length];
+
+            guides += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" class="hub-expiry-guide"></circle>`;
+            arcs += `<path d="${describeArc(radius, startAngle, startAngle + sweep)}" fill="none" stroke="${color}" stroke-width="13" stroke-linecap="round" class="hub-expiry-arc" data-doc-name="${frappe.utils.escape_html(d.name)}"><title>${frappe.utils.escape_html(d.document_name)} — ${d.days}d</title></path>`;
+
+            const labelPos = polarToCartesian(radius, startAngle);
+            labels += `
+                <circle cx="${labelPos.x}" cy="${labelPos.y}" r="15" fill="${color}" class="hub-expiry-badge" data-doc-name="${frappe.utils.escape_html(d.name)}"></circle>
+                <text x="${labelPos.x}" y="${labelPos.y}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="700" class="hub-expiry-badge" data-doc-name="${frappe.utils.escape_html(d.name)}">${d.days}</text>
+                <text x="${labelPos.x}" y="${labelPos.y + 24}" text-anchor="middle" font-size="11" font-weight="600" class="hub-expiry-doc-label">${frappe.utils.escape_html(d.document_name.length > 14 ? d.document_name.slice(0, 13) + '…' : d.document_name)}</text>`;
+        });
+
+        return `<div class="hub-expiry-chart-wrap">
+            <svg viewBox="0 0 400 400" class="hub-expiry-chart-svg">
+                ${guides}
+                ${arcs}
+                ${labels}
+                <circle cx="${cx}" cy="${cy}" r="46" class="hub-expiry-center-halo"></circle>
+                <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="15" font-weight="700" class="hub-expiry-center-title">Expiring Soon</text>
+                <text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="11" class="hub-expiry-center-sub">Next ${n} Document${n > 1 ? 's' : ''}</text>
+            </svg>
+        </div>`;
+    }
+
+    init_expiry_chart() {
+        this.$container.off('click.expiryArc').on('click.expiryArc', '.hub-expiry-arc, .hub-expiry-badge', (e) => {
+            if (this.customizeMode) return;
+            const name = $(e.currentTarget).attr('data-doc-name');
+            if (name) frappe.set_route('Form', 'My Document', name);
+        });
+    }
+
+    async refresh_my_documents_card(cardKey, filterType, value) {
+        this.docFilters = this.docFilters || {};
+        this.docFilters[cardKey] = this.docFilters[cardKey] || { status: 'Valid', aging: null };
+        this.docFilters[cardKey][filterType] = value || null;
+
+        const filters = this.docFilters[cardKey];
+        const r = await frappe.call('employee_hub.employee_hub.api.get_my_documents_card', {
+            status: filters.status,
+            aging: filters.aging,
+        });
+        const docs = r.message.documents || [];
+        const $card = this.$main.find(`[data-card-key="${cardKey}"]`);
+
+        if (cardKey === 'my-documents-valid') {
+            $card.replaceWith(this.my_documents_list_card_html(cardKey, 'My Documents', docs, 'Nothing matches this filter.', filters));
+        } else {
+            $card.replaceWith(this.my_documents_chart_card_html(cardKey, 'Expiring Soon', docs, filters));
+            this.init_expiry_chart();
+        }
     }
 
     // -----------------------------------------------------------------

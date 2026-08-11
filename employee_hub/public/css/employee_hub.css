@@ -263,6 +263,10 @@
     max-height: 260px;
     overflow-y: auto;
 }
+.hub-scroll-list.hub-scroll-7 {
+    max-height: 455px;
+    overflow-y: auto;
+}
 .hub-scroll-list.hub-scroll-3 {
     max-height: 200px;
     overflow-y: auto;
@@ -955,7 +959,8 @@ html[data-theme="dark"] .employee-hub-pinned-label {
 .hub-customizing .hub-mini-filter,
 .hub-customizing .hub-status-filter,
 .hub-customizing .hub-view-all,
-.hub-customizing .hub-card-link {
+.hub-customizing .hub-card-link,
+.hub-customizing .hub-doc-filter {
     display: none !important;
 }
 
@@ -1159,6 +1164,16 @@ html[data-theme="dark"] .hub-role-profile-link-btn {
     border-color: #17a2b8 !important;
     color: #fff !important;
 }
+.hub-fetch-updated-btn {
+    background: #e74c3c !important;
+    border-color: #e74c3c !important;
+    color: #fff !important;
+}
+.hub-fetch-updated-btn:hover {
+    background: #c0392b !important;
+    border-color: #c0392b !important;
+    color: #fff !important;
+}
 
 /* Role Profile Layout form — inline header strip sitting directly above
    the Layout Items table (not in the page toolbar), containing Preview /
@@ -1257,4 +1272,165 @@ html[data-theme="dark"] .hub-rp-reset-btn { background: var(--hub-purple); borde
 }
 html[data-theme="dark"] .hub-rp-preview-wrapper {
     border-color: #3d3d40;
+}
+
+/* My Document rows on the Documents tab — name+expiry, colored status
+   badge, and a preview icon, all in one row; responsive via flex-wrap. */
+.hub-my-document-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    flex-wrap: wrap;
+}
+.hub-my-document-main {
+    min-width: 0;
+    flex: 1;
+}
+.hub-my-document-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    color: #6b6b80;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.hub-my-document-preview:hover {
+    background: rgba(108, 92, 231, 0.1);
+    color: var(--hub-purple);
+}
+html[data-theme="dark"] .hub-my-document-preview {
+    color: #d0d0d3;
+}
+
+/* My Documents card filter — status dropdown on the valid-docs card, aging
+   bucket on the expiring-soon card. Same visual language as the app's
+   existing mini/status filter pills. */
+.hub-doc-filter {
+    position: relative;
+    display: inline-flex;
+}
+.hub-doc-filter-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #F0F0F5;
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #5a5a6e;
+    cursor: pointer;
+}
+.hub-doc-filter-icon {
+    font-size: 8px;
+}
+.hub-doc-filter-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid var(--hub-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(20, 20, 40, 0.16);
+    min-width: 140px;
+    padding: 6px;
+    z-index: 20;
+}
+.hub-doc-filter.open .hub-doc-filter-menu {
+    display: block;
+}
+.hub-doc-filter-option {
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #2d2d3a;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.hub-doc-filter-option:hover {
+    background: var(--hub-bg);
+}
+.hub-doc-filter-option.active {
+    color: var(--hub-purple);
+    font-weight: 600;
+}
+html[data-theme="dark"] .hub-doc-filter-label {
+    background: #333336;
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-doc-filter-menu {
+    background: #2a2a2d;
+    border-color: #3d3d40;
+}
+html[data-theme="dark"] .hub-doc-filter-option {
+    color: #d0d0d3;
+}
+html[data-theme="dark"] .hub-doc-filter-option:hover {
+    background: #333336;
+}
+
+/* Expiring Soon — custom radial/concentric arc chart. Everything (arcs,
+   badges, labels, center text) lives inside the same SVG viewBox, so it
+   scales perfectly as one unit with the container width — no separate
+   resize/reposition logic needed for responsiveness. */
+.hub-expiry-chart-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+}
+.hub-expiry-chart-svg {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+}
+.hub-expiry-guide {
+    stroke: var(--hub-border);
+    stroke-width: 1;
+    stroke-dasharray: 2, 5;
+}
+.hub-expiry-arc {
+    cursor: pointer;
+    transition: opacity 0.15s, filter 0.15s;
+    filter: drop-shadow(0 2px 4px rgba(20, 20, 40, 0.18));
+}
+.hub-expiry-arc:hover {
+    opacity: 0.85;
+    filter: drop-shadow(0 3px 7px rgba(20, 20, 40, 0.28));
+}
+.hub-expiry-badge {
+    cursor: pointer;
+}
+.hub-expiry-doc-label {
+    fill: #4a4a5e;
+    paint-order: stroke;
+    stroke: #fff;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+.hub-expiry-center-halo {
+    fill: #fff;
+    filter: drop-shadow(0 1px 3px rgba(20, 20, 40, 0.12));
+}
+.hub-expiry-center-title {
+    fill: #2d2d3a;
+}
+.hub-expiry-center-sub {
+    fill: var(--hub-text-muted);
+}
+html[data-theme="dark"] .hub-expiry-doc-label {
+    fill: #d0d0d3;
+    stroke: #1c1c1e;
+}
+html[data-theme="dark"] .hub-expiry-center-halo {
+    fill: #1c1c1e;
+}
+html[data-theme="dark"] .hub-expiry-center-title {
+    fill: #f0f0f2;
 }

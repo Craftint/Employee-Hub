@@ -51,5 +51,6 @@ CARD_ROWS = [
     # Requests
     {"scope": "Card", "tab": "requests", "card_key": "hr-request", "sequence": 1},
     # Documents
-    {"scope": "Card", "tab": "documents", "card_key": "documents-info", "sequence": 1},
+    {"scope": "Card", "tab": "documents", "card_key": "my-documents-valid", "sequence": 1},
+    {"scope": "Card", "tab": "documents", "card_key": "my-documents-expiring", "sequence": 2},
 ]

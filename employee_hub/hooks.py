@@ -6,16 +6,25 @@ app_email = "sebin.freelance@gmail.com"
 app_license = "MIT"
 
 # Assets --------------------------------------------------------------------
-app_include_js = "/assets/employee_hub/js/employee_hub_boot.js"
+app_include_js = ["/assets/employee_hub/js/employee_hub_boot.js", "/assets/employee_hub/js/hub_layout_preview.js"]
 app_include_css = "/assets/employee_hub/css/employee_hub.css"
 
-# Redirect employees straight to Employee Hub after login -------------------
-# Requires the built-in "Employee" role (auto-assigned by ERPNext when a
-# User is linked to an Employee record).
 
 doctype_js = {
     "Role Profile": "public/js/role_profile.js"
 }
+
+
+permission_query_conditions = {
+    "My Document": "employee_hub.employee_hub.utils.my_document_permissions.get_permission_query_conditions"
+}
+has_permission = {
+    "My Document": "employee_hub.employee_hub.utils.my_document_permissions.has_permission"
+}
+
+# Redirect employees straight to Employee Hub after login -------------------
+# Requires the built-in "Employee" role (auto-assigned by ERPNext when a
+# User is linked to an Employee record).
 
 # role_home_page = {
 #     "Employee": "employee-hub"

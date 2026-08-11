@@ -42,7 +42,7 @@
   {
    "fieldname": "layout_help",
    "fieldtype": "HTML",
-   "options": "<p class='text-muted' style='margin-bottom:8px;'>This is what every employee sees by default. Edit the rows below to change what's shown and in what order.</p>",
+   "options": "<p class='text-muted' style='margin-bottom:8px;'>This is what every employee sees by default. Use Preview above to change what's shown and in what order \u2014 the table below is read-only.</p>",
    "depends_on": "eval:doc.enable_employee_hub_access"
   },
   {
@@ -50,7 +50,8 @@
    "fieldtype": "Table",
    "label": "Layout Items",
    "options": "Employee Hub Layout Item",
-   "depends_on": "eval:doc.enable_employee_hub_access"
+   "depends_on": "eval:doc.enable_employee_hub_access",
+   "read_only": 1
   }
  ],
  "permissions": [

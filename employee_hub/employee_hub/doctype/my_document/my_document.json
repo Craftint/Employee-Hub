@@ -1,0 +1,119 @@
+{
+ "doctype": "DocType",
+ "name": "My Document",
+ "module": "Employee Hub",
+ "custom": 0,
+ "autoname": "format:{employee}_{document_name}_{#####}",
+ "naming_rule": "Expression",
+ "title_field": "document_name",
+ "track_changes": 1,
+ "track_views": 1,
+ "engine": "InnoDB",
+ "fields": [
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "document_name",
+   "fieldtype": "Data",
+   "label": "Document Name",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "e.g. Passport, Emirates Id, Visa Copy"
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "options": "Employee",
+   "label": "Employee",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": ""
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Full Name",
+   "fetch_from": "employee.employee_name",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "To Verify\nValid\nExpired\nInvalid",
+   "default": "To Verify",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Set to Expired or Invalid to allow a replacement document with the same name to be added."
+  },
+  {
+   "fieldname": "expiry_date",
+   "fieldtype": "Date",
+   "label": "Expiry Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": ""
+  },
+  {
+   "fieldname": "section_break_file",
+   "fieldtype": "Section Break",
+   "label": "Document File"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment",
+   "reqd": 1,
+   "description": "Attach the named document here."
+  },
+  {
+   "fieldname": "column_break_attachment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attachment_preview",
+   "fieldtype": "HTML",
+   "label": "Preview",
+   "depends_on": "eval:doc.attachment"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "select": 1,
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1
+  },
+  {
+   "role": "HR Manager",
+   "select": 1,
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "print": 1
+  },
+  {
+   "role": "Employee",
+   "select": 1,
+   "read": 1
+  }
+ ]
+}

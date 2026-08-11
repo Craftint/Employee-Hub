@@ -39,13 +39,14 @@
   {
    "fieldname": "layout_help",
    "fieldtype": "HTML",
-   "options": "<p class='text-muted' style='margin-bottom:8px;'>Everyone with this Role Profile sees this layout instead of the global default, unless they've customized their own view. Edit the rows below to change what's shown and in what order.</p>"
+   "options": "<p class='text-muted' style='margin-bottom:8px;'>Everyone with this Role Profile sees this layout instead of the global default, unless they've customized their own view. Use Preview above to change what's shown and in what order \u2014 the table below is read-only.</p>"
   },
   {
    "fieldname": "layout",
    "fieldtype": "Table",
    "label": "Layout Items",
-   "options": "Employee Hub Layout Item"
+   "options": "Employee Hub Layout Item",
+   "read_only": 1
   }
  ],
  "permissions": [
