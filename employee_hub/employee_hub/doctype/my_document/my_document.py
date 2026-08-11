@@ -36,8 +36,9 @@ class MyDocument(Document):
 
     def validate_no_duplicate(self):
         # Same employee + same document name (case/spacing-insensitive) —
-        # blocked UNLESS every existing match is Expired or Invalid, since
-        # a replacement document is exactly what should be allowed then.
+        # blocked if an existing match is Valid OR To Verify (both count
+        # as "currently active"), unless it's Expired or Invalid, since a
+        # replacement document is exactly what should be allowed then.
         if not (self.employee and self.document_name):
             return
 
@@ -50,11 +51,11 @@ class MyDocument(Document):
         )
         for row in existing:
             if re.sub(r"\s+", "", row.document_name or "").lower() == normalized:
-                if row.status == "Valid":
+                if row.status in ("Valid", "To Verify"):
                     frappe.throw(
                         _(
-                            "{0} already has a valid '{1}' on file. Mark the existing one as Expired or Invalid before adding a replacement."
-                        ).format(self.employee, self.document_name)
+                            "{0} already has a '{1}' on file with status {2}. Mark the existing one as Expired or Invalid before adding a replacement."
+                        ).format(self.employee, self.document_name, row.status)
                     )
 
     def secure_attachment(self):

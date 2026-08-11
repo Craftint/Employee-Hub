@@ -263,6 +263,10 @@
     max-height: 260px;
     overflow-y: auto;
 }
+.hub-scroll-list.hub-scroll-7 {
+    max-height: 455px;
+    overflow-y: auto;
+}
 .hub-scroll-list.hub-scroll-3 {
     max-height: 200px;
     overflow-y: auto;
@@ -955,7 +959,8 @@ html[data-theme="dark"] .employee-hub-pinned-label {
 .hub-customizing .hub-mini-filter,
 .hub-customizing .hub-status-filter,
 .hub-customizing .hub-view-all,
-.hub-customizing .hub-card-link {
+.hub-customizing .hub-card-link,
+.hub-customizing .hub-doc-filter {
     display: none !important;
 }
 
@@ -1159,6 +1164,16 @@ html[data-theme="dark"] .hub-role-profile-link-btn {
     border-color: #17a2b8 !important;
     color: #fff !important;
 }
+.hub-fetch-updated-btn {
+    background: #e74c3c !important;
+    border-color: #e74c3c !important;
+    color: #fff !important;
+}
+.hub-fetch-updated-btn:hover {
+    background: #c0392b !important;
+    border-color: #c0392b !important;
+    color: #fff !important;
+}
 
 /* Role Profile Layout form — inline header strip sitting directly above
    the Layout Items table (not in the page toolbar), containing Preview /
@@ -1359,4 +1374,63 @@ html[data-theme="dark"] .hub-doc-filter-option {
 }
 html[data-theme="dark"] .hub-doc-filter-option:hover {
     background: #333336;
+}
+
+/* Expiring Soon — custom radial/concentric arc chart. Everything (arcs,
+   badges, labels, center text) lives inside the same SVG viewBox, so it
+   scales perfectly as one unit with the container width — no separate
+   resize/reposition logic needed for responsiveness. */
+.hub-expiry-chart-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+}
+.hub-expiry-chart-svg {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+}
+.hub-expiry-guide {
+    stroke: var(--hub-border);
+    stroke-width: 1;
+    stroke-dasharray: 2, 5;
+}
+.hub-expiry-arc {
+    cursor: pointer;
+    transition: opacity 0.15s, filter 0.15s;
+    filter: drop-shadow(0 2px 4px rgba(20, 20, 40, 0.18));
+}
+.hub-expiry-arc:hover {
+    opacity: 0.85;
+    filter: drop-shadow(0 3px 7px rgba(20, 20, 40, 0.28));
+}
+.hub-expiry-badge {
+    cursor: pointer;
+}
+.hub-expiry-doc-label {
+    fill: #4a4a5e;
+    paint-order: stroke;
+    stroke: #fff;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+.hub-expiry-center-halo {
+    fill: #fff;
+    filter: drop-shadow(0 1px 3px rgba(20, 20, 40, 0.12));
+}
+.hub-expiry-center-title {
+    fill: #2d2d3a;
+}
+.hub-expiry-center-sub {
+    fill: var(--hub-text-muted);
+}
+html[data-theme="dark"] .hub-expiry-doc-label {
+    fill: #d0d0d3;
+    stroke: #1c1c1e;
+}
+html[data-theme="dark"] .hub-expiry-center-halo {
+    fill: #1c1c1e;
+}
+html[data-theme="dark"] .hub-expiry-center-title {
+    fill: #f0f0f2;
 }

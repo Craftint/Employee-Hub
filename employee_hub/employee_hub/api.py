@@ -629,30 +629,28 @@ def get_tab_data(tab):
     frappe.throw(_("Unknown tab: {0}").format(tab))
 
 
-def get_my_documents_data(employee, status=None, aging=None):
+def _filter_my_documents(employee, status=None, aging=None):
+    docs = frappe.get_list(
+        "My Document",
+        filters={"employee": employee, "status": status or "Valid"},
+        fields=["name", "document_name", "status", "expiry_date"],
+        order_by="expiry_date asc",
+    )
+    if aging:
+        today = getdate(nowdate())
+        aging_ranges = {"30": (0, 30), "60": (31, 60), "90": (61, 90), "120": (91, 120)}
+        lo, hi = aging_ranges.get(aging, aging_ranges["30"])
+        docs = [d for d in docs if d.expiry_date and lo <= (getdate(d.expiry_date) - today).days <= hi]
+    return docs
+
+
+def get_my_documents_data(employee):
     if not frappe.db.exists("DocType", "My Document"):
         return {"my_documents_valid": [], "my_documents_expiring": []}
-
-    valid_status = status or "Valid"
-    valid = frappe.get_list(
-        "My Document",
-        filters={"employee": employee, "status": valid_status},
-        fields=["name", "document_name", "status", "expiry_date"],
-        order_by="expiry_date asc",
-    )
-
-    all_valid = frappe.get_list(
-        "My Document",
-        filters={"employee": employee, "status": "Valid"},
-        fields=["name", "document_name", "status", "expiry_date"],
-        order_by="expiry_date asc",
-    )
-    today = getdate(nowdate())
-    aging_ranges = {"30": (0, 30), "60": (31, 60), "90": (61, 90), "120": (91, 120)}
-    lo, hi = aging_ranges.get(aging, aging_ranges["30"])
-    expiring = [d for d in all_valid if d.expiry_date and lo <= (getdate(d.expiry_date) - today).days <= hi]
-
-    return {"my_documents_valid": valid, "my_documents_expiring": expiring}
+    return {
+        "my_documents_valid": _filter_my_documents(employee),
+        "my_documents_expiring": _filter_my_documents(employee)[:5],
+    }
 
 
 @frappe.whitelist()
@@ -660,7 +658,8 @@ def get_my_documents_card(status=None, aging=None):
     employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
     if not employee:
         frappe.throw(_("No Employee record linked."))
-    return get_my_documents_data(employee, status, aging)
+    docs = _filter_my_documents(employee, status, aging)
+    return {"documents": docs}
 
 
 # ---------------------------------------------------------------------------
@@ -1131,3 +1130,42 @@ def get_document_preview_url(name):
     if not frappe.has_permission("My Document", "read", doc=name):
         frappe.throw(_("Not permitted"), frappe.PermissionError)
     return frappe.db.get_value("My Document", name, "attachment")
+
+
+@frappe.whitelist()
+def fetch_updated_documents_layout():
+    """Manual, System-Manager-triggered fix for the Global Default Layout
+    specifically — replaces the old 'documents-info' card with the two
+    real document cards ('my-documents-valid' / 'my-documents-expiring')
+    introduced later, preserving its position and hidden state. Only
+    touches that one card; everything else in the layout is untouched.
+    A temporary utility (the button that calls this hides itself once
+    nothing needs fixing) rather than a permanent feature."""
+    if "System Manager" not in frappe.get_roles():
+        frappe.throw(_("Only System Manager can do this."), frappe.PermissionError)
+
+    settings = frappe.get_single("Employee Hub Settings")
+    old_rows = [
+        {"scope": r.scope, "tab": r.tab, "card_key": r.card_key, "is_hidden": r.is_hidden, "sequence": r.sequence}
+        for r in settings.global_default_layout
+    ]
+
+    if not any(r["card_key"] == "documents-info" for r in old_rows):
+        return {"changed": False}
+
+    new_rows = []
+    for row in old_rows:
+        if row["card_key"] == "documents-info":
+            for other in old_rows:
+                if other is not row and other["tab"] == row["tab"] and other["scope"] == "Card" and other["sequence"] > row["sequence"]:
+                    other["sequence"] += 1
+            new_rows.append({**row, "card_key": "my-documents-valid"})
+            new_rows.append({**row, "card_key": "my-documents-expiring", "sequence": row["sequence"] + 1})
+        else:
+            new_rows.append(row)
+
+    settings.set("global_default_layout", [])
+    for row in new_rows:
+        settings.append("global_default_layout", row)
+    settings.save()
+    return {"changed": True}

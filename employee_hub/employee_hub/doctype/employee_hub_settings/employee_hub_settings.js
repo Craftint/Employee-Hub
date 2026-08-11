@@ -19,6 +19,28 @@ frappe.ui.form.on("Employee Hub Settings", {
             onReset: (frm) => frappe.call("employee_hub.employee_hub.api.reset_global_default_layout").then(() => frm.reload_doc()),
         });
 
+        // Temporary utility — only shows up while the old placeholder
+        // "documents-info" card is still present, so it hides itself
+        // automatically once you've used it on a given site rather than
+        // needing to be manually removed afterward.
+        const hasOldDocumentsCard = (frm.doc.global_default_layout || []).some((r) => r.card_key === "documents-info");
+        if (hasOldDocumentsCard) {
+            const $fetchBtn = frm.page.add_inner_button(__("Fetch Updated Layout"), () => {
+                frappe.confirm(
+                    __("Replace the old Documents card with the new My Documents cards? This only touches that one card — everything else in the layout stays exactly as it is."),
+                    () => {
+                        frappe.call("employee_hub.employee_hub.api.fetch_updated_documents_layout").then((r) => {
+                            if (r.message.changed) {
+                                frappe.show_alert({ message: __("Layout updated"), indicator: "green" });
+                                frm.reload_doc();
+                            }
+                        });
+                    }
+                );
+            });
+            $fetchBtn.addClass("hub-fetch-updated-btn");
+        }
+
         // Grouped separately (its own dropdown) so it doesn't crowd the
         // header above — always visible regardless of whether
         // personalization / role profile layouts are currently enabled,

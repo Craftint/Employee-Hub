@@ -3,7 +3,7 @@
  "name": "My Document",
  "module": "Employee Hub",
  "custom": 0,
- "autoname": "format:{employee}_{document_name}",
+ "autoname": "format:{employee}_{document_name}_{#####}",
  "naming_rule": "Expression",
  "title_field": "document_name",
  "track_changes": 1,
@@ -11,13 +11,18 @@
  "engine": "InnoDB",
  "fields": [
   {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
    "fieldname": "document_name",
    "fieldtype": "Data",
    "label": "Document Name",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "e.g. Passport, Emirates Id, Visa Copy \u2014 each word capitalized."
+   "description": "e.g. Passport, Emirates Id, Visa Copy"
   },
   {
    "fieldname": "employee",
@@ -46,8 +51,8 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Valid\nExpired\nInvalid",
-   "default": "Valid",
+   "options": "To Verify\nValid\nExpired\nInvalid",
+   "default": "To Verify",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
@@ -72,6 +77,10 @@
    "label": "Attachment",
    "reqd": 1,
    "description": "Attach the named document here."
+  },
+  {
+   "fieldname": "column_break_attachment",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "attachment_preview",

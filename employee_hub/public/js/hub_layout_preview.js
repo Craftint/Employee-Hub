@@ -328,18 +328,12 @@ class HubLayoutPreview {
                 </div>`
             ).join('');
             bodyHtml = `<div class="hub-card-header"><h4>Upcoming Birthdays</h4></div><div class="hub-card-body">${rows}</div>`;
-        } else if (meta.kind === 'my-documents-valid' || meta.kind === 'my-documents-expiring') {
-            const sample =
-                meta.kind === 'my-documents-valid'
-                    ? [
-                          ['Passport', 'Valid', '#2ecc71', '12 Jun 2028'],
-                          ['Emirates Id', 'Valid', '#2ecc71', '01 Mar 2027'],
-                          ['Visa Copy', 'Valid', '#2ecc71', '20 Nov 2026'],
-                      ]
-                    : [
-                          ['Driving License', 'Valid', '#2ecc71', '25 Aug 2026'],
-                          ['Health Insurance Card', 'Valid', '#2ecc71', '02 Sep 2026'],
-                      ];
+        } else if (meta.kind === 'my-documents-valid') {
+            const sample = [
+                ['Passport', 'Valid', '#2ecc71', '12 Jun 2028'],
+                ['Emirates Id', 'Valid', '#2ecc71', '01 Mar 2027'],
+                ['Visa Copy', 'Valid', '#2ecc71', '20 Nov 2026'],
+            ];
             const rows = sample
                 .map(
                     ([name, status, color, date]) => `<div class="hub-list-row">
@@ -348,7 +342,9 @@ class HubLayoutPreview {
                     </div>`
                 )
                 .join('');
-            bodyHtml = `<div class="hub-card-header"><h4>${meta.title}</h4></div><div class="hub-card-body">${rows}</div>`;
+            bodyHtml = `<div class="hub-card-header"><h4>My Documents</h4></div><div class="hub-card-body">${rows}</div>`;
+        } else if (meta.kind === 'my-documents-expiring') {
+            bodyHtml = `<div class="hub-card-header"><h4>Expiring Soon</h4></div><div class="hub-card-body">${hub_preview_expiry_chart_html()}</div>`;
         } else if (meta.kind === 'leave-balance') {
             bodyHtml = `<div class="hub-card-header"><h4>Leave Balance</h4></div>
                 <div class="hub-card-body">
@@ -571,6 +567,68 @@ class HubLayoutPreview {
 // Tags / Share) when entering Preview, for more width — the user brings
 // it back with Frappe's own existing sidebar toggle (the ☰ icon next to
 // the breadcrumb), not a separate control of ours.
+// Sample version of the real app's Expiring Soon radial chart, using fixed
+// illustrative days-remaining values instead of live data — same arc math,
+// same SVG-native label positioning (so it scales responsively the same
+// way), same click-through wiring where a real doc name would normally go.
+function hub_preview_expiry_chart_html() {
+    const sample = [
+        { name: 'Driving License', days: 12, color: '#e84393' },
+        { name: 'Health Insurance', days: 25, color: '#3498db' },
+        { name: 'Visa Copy', days: 40, color: '#8e7dbe' },
+        { name: 'Emirates Id', days: 58, color: '#f39c12' },
+        { name: 'Passport', days: 70, color: '#00b894' },
+    ];
+    const maxDays = Math.max(...sample.map((d) => d.days), 1);
+    const cx = 200,
+        cy = 200;
+    const startAngle = -140;
+    const maxSweep = 260;
+    const baseRadius = 56;
+    const ringGap = 26;
+
+    const polarToCartesian = (r, angleDeg) => {
+        const rad = ((angleDeg - 90) * Math.PI) / 180;
+        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+    };
+    const describeArc = (r, a1, a2) => {
+        const start = polarToCartesian(r, a2);
+        const end = polarToCartesian(r, a1);
+        const largeArc = a2 - a1 <= 180 ? 0 : 1;
+        return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 0 ${end.x} ${end.y}`;
+    };
+
+    const n = sample.length;
+    let arcs = '';
+    let guides = '';
+    let labels = '';
+
+    sample.forEach((d, i) => {
+        const ringIndex = n - 1 - i;
+        const radius = baseRadius + ringGap * ringIndex;
+        const sweep = Math.max(18, maxSweep * (d.days / maxDays));
+
+        guides += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" class="hub-expiry-guide"></circle>`;
+        arcs += `<path d="${describeArc(radius, startAngle, startAngle + sweep)}" fill="none" stroke="${d.color}" stroke-width="13" stroke-linecap="round" class="hub-expiry-arc"><title>${d.name} — ${d.days}d</title></path>`;
+
+        const labelPos = polarToCartesian(radius, startAngle);
+        labels += `
+            <circle cx="${labelPos.x}" cy="${labelPos.y}" r="15" fill="${d.color}" class="hub-expiry-badge"></circle>
+            <text x="${labelPos.x}" y="${labelPos.y}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="700" class="hub-expiry-badge">${d.days}</text>
+            <text x="${labelPos.x}" y="${labelPos.y + 24}" text-anchor="middle" font-size="11" font-weight="600" class="hub-expiry-doc-label">${d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name}</text>`;
+    });
+
+    return `<div class="hub-expiry-chart-wrap">
+        <svg viewBox="0 0 400 400" class="hub-expiry-chart-svg">
+            ${guides}
+            ${arcs}
+            ${labels}
+            <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="15" font-weight="700" class="hub-expiry-center-title">Expiring Soon</text>
+            <text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="11" class="hub-expiry-center-sub">Next ${n} Documents</text>
+        </svg>
+    </div>`;
+}
+
 function hub_collapse_form_sidebar(collapse) {
     const selectors = [
         '.layout-side-section',
