@@ -520,6 +520,40 @@
         grid-template-columns: 1fr 60px 90px;
     }
 }
+
+@media (max-width: 480px) {
+    /* Same fix as the document-card filter menus below — anchoring to the
+       trigger button overflowed unpredictably depending on where the
+       button sat within a narrow card. A viewport-centered fixed popup
+       sidesteps that for every card's period/status filter, app-wide. */
+    .hub-mini-filter-menu,
+    .hub-status-filter-menu {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, -50%);
+        width: 78vw;
+        max-width: 260px;
+        max-height: 60vh;
+        overflow-y: auto;
+        font-size: 12px;
+        z-index: 200;
+    }
+    .hub-mini-filter-option,
+    .hub-status-filter-option {
+        font-size: 12px;
+        text-align: center;
+    }
+    .hub-mini-filter.open::before,
+    .hub-status-filter.open::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 150;
+    }
+}
 .hub-clickable { cursor: pointer; border-radius: 6px; transition: background 0.12s; }
 .hub-clickable:hover { background: var(--hub-bg); padding-left: 6px; padding-right: 6px; margin: 0 -6px; }
 .hub-list-title {
