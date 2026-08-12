@@ -140,6 +140,9 @@ class HubLayoutPreview {
             <rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.8"/>
         </svg>`;
+        this._deleteSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
     }
 
     load_from_doc() {
@@ -373,12 +376,14 @@ class HubLayoutPreview {
         const cardClass = meta.kind === 'stat' ? 'hub-card hub-stat-card' : 'hub-card';
         const $card = $(`<div class="${cardClass} ${isHidden ? 'hub-item-hidden' : ''}" data-card-key="${item.card_key}" data-category="${meta.category}">${bodyHtml}</div>`);
         if (this.customizeMode) {
+            const isDuplicated = this.pendingLayout.filter((i) => i.scope === 'Card' && i.card_key === item.card_key).length > 1;
             $card.append(`
                 <div class="hub-customize-overlay">
                     <span class="hub-eye-icon" title="${isHidden ? 'Show' : 'Hide'}">${isHidden ? this._eyeOffSvg : this._eyeSvg}</span>
                     <span class="hub-drag-handle" title="Drag to reorder">${this._dragSvg}</span>
                     <span class="hub-duplicate-icon" title="Duplicate to Another Tab">${this._dupSvg}</span>
                     <span class="hub-move-to-icon" title="Move to a different tab">${this._moveSvg}</span>
+                    ${isDuplicated ? `<span class="hub-delete-duplicate-icon" title="Remove this duplicate">${this._deleteSvg}</span>` : ''}
                 </div>`);
         }
         $row.append($card);
@@ -459,6 +464,12 @@ class HubLayoutPreview {
             e.stopPropagation();
             this.open_tab_picker($(e.currentTarget).closest('[data-card-key]'), 'duplicate');
         });
+
+        this.$root.on('click.rpHub', '.hub-delete-duplicate-icon', (e) => {
+            e.stopPropagation();
+            const cardKey = $(e.currentTarget).closest('[data-card-key]').attr('data-card-key');
+            this.delete_duplicate_card(cardKey);
+        });
     }
 
     open_tab_picker($card, action) {
@@ -512,6 +523,22 @@ class HubLayoutPreview {
         this.pendingLayout.push({ scope: 'Card', tab: targetTab, card_key: cardKey, is_hidden: 0, sequence: maxSeq + 1 });
         this.sync_to_doc();
         frappe.show_alert({ message: __('Also added to {0}', [(HUB_PREVIEW_TABS.find((t) => t.key === targetTab) || {}).label || targetTab]), indicator: 'blue' });
+    }
+
+    delete_duplicate_card(cardKey) {
+        const remaining = this.pendingLayout.filter(
+            (i) => i.scope === 'Card' && i.tab === this.activeTab && i.card_key !== cardKey
+        );
+        if (!remaining.length) {
+            frappe.msgprint(__('A tab needs at least one card. Hide the whole tab instead if you want it empty.'));
+            return;
+        }
+        this.pendingLayout = this.pendingLayout.filter(
+            (i) => !(i.scope === 'Card' && i.tab === this.activeTab && i.card_key === cardKey)
+        );
+        this.sync_to_doc();
+        this.render_tab();
+        frappe.show_alert({ message: __('Removed from this tab'), indicator: 'blue' });
     }
 
     recompute_sequences() {
@@ -584,8 +611,8 @@ function hub_preview_expiry_chart_html() {
         cy = 200;
     const startAngle = -140;
     const maxSweep = 260;
-    const baseRadius = 56;
-    const ringGap = 26;
+    const maxRadius = 172;
+    const ringGap = 28;
 
     const polarToCartesian = (r, angleDeg) => {
         const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -605,7 +632,7 @@ function hub_preview_expiry_chart_html() {
 
     sample.forEach((d, i) => {
         const ringIndex = n - 1 - i;
-        const radius = baseRadius + ringGap * ringIndex;
+        const radius = maxRadius - ringGap * (n - 1 - ringIndex);
         const sweep = Math.max(18, maxSweep * (d.days / maxDays));
 
         guides += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" class="hub-expiry-guide"></circle>`;
@@ -623,6 +650,7 @@ function hub_preview_expiry_chart_html() {
             ${guides}
             ${arcs}
             ${labels}
+            <circle cx="${cx}" cy="${cy}" r="46" class="hub-expiry-center-halo"></circle>
             <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="15" font-weight="700" class="hub-expiry-center-title">Expiring Soon</text>
             <text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="11" class="hub-expiry-center-sub">Next ${n} Documents</text>
         </svg>
